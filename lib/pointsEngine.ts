@@ -20,15 +20,19 @@ export interface CalculationResult {
 }
 
 export function calculatePoints(input: ActivityInput): CalculationResult {
-  const base_points = 
-    (input.chanting_rounds * input.points_per_chanting) +
-    (input.reading_minutes * input.points_per_reading) +
-    (input.hearing_minutes * input.points_per_hearing);
+  const chantingPoints = input.target_chanting > 0 
+    ? (input.chanting_rounds / input.target_chanting) * 8 
+    : 0;
+
+  const readingPoints = input.target_reading > 0 
+    ? (input.reading_minutes / input.target_reading) * 30 
+    : 0;
+
+  const base_points = chantingPoints + readingPoints;
 
   const targetsMet = 
     input.chanting_rounds >= input.target_chanting &&
-    input.reading_minutes >= input.target_reading &&
-    input.hearing_minutes >= input.target_hearing;
+    input.reading_minutes >= input.target_reading;
 
   let streak_bonus = 0;
   if (targetsMet && input.streak_count > 0) {
@@ -39,12 +43,11 @@ export function calculatePoints(input: ActivityInput): CalculationResult {
 
   const total_points = Math.max(0, Math.round(base_points + streak_bonus));
 
-  // Completion percentage = average of (actual/target) for all 3 params, capped at 100%
-  const chantingComp = Math.min(1, input.chanting_rounds / input.target_chanting);
-  const readingComp = Math.min(1, input.reading_minutes / input.target_reading);
-  const hearingComp = Math.min(1, input.hearing_minutes / input.target_hearing);
+  // Completion percentage = average of (actual/target) for chanting and reading, capped at 100%
+  const chantingComp = input.target_chanting > 0 ? Math.min(1, input.chanting_rounds / input.target_chanting) : 1;
+  const readingComp = input.target_reading > 0 ? Math.min(1, input.reading_minutes / input.target_reading) : 1;
   
-  const completion_percentage = ((chantingComp + readingComp + hearingComp) / 3) * 100;
+  const completion_percentage = ((chantingComp + readingComp) / 2) * 100;
 
   return {
     base_points,

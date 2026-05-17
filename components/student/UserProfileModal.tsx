@@ -13,7 +13,7 @@ interface UserProfileModalProps {
 
 export const UserProfileModal = ({ userId, onClose }: UserProfileModalProps) => {
   const [profile, setProfile] = useState<any>(null);
-  const [logs, setLogs] = useState<any[]>([]);
+  const [chartData, setChartData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -27,17 +27,55 @@ export const UserProfileModal = ({ userId, onClose }: UserProfileModalProps) => 
       .select('*')
       .eq('id', userId)
       .single();
-    
+
     setProfile(userData);
 
-    const { data: activityLogs } = await supabase
-      .from('activity_logs')
-      .select('log_date, points_earned')
-      .eq('user_id', userId)
-      .order('log_date', { ascending: false })
-      .limit(7);
-    
-    setLogs(activityLogs?.reverse() || []);
+    try {
+      const res = await fetch(`/api/user-logs?userId=${userId}`);
+      if (res.ok) {
+        const payload = await res.json();
+        const activityLogs = Array.isArray(payload) ? payload : [];
+
+        // Generate last 7 days chart data
+        const last7 = [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        for (let i = 6; i >= 0; i--) {
+          const d = new Date(today);
+          d.setDate(today.getDate() - i);
+
+          const year = d.getFullYear();
+          const month = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          const dStr = `${year}-${month}-${day}`;
+
+          const log = activityLogs.find((l: any) => l.log_date === dStr);
+
+          const chantingPts = log && userData?.target_chanting > 0
+            ? (log.chanting_rounds / userData.target_chanting) * 8
+            : 0;
+          const readingPts = log && userData?.target_reading > 0
+            ? (log.reading_minutes / userData.target_reading) * 30
+            : 0;
+
+          last7.push({
+            date: d.toLocaleDateString('en-US', { weekday: 'short' }),
+            dateFull: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            Chanting: Math.round(chantingPts),
+            Reading: Math.round(readingPts)
+          });
+        }
+
+        setChartData(last7);
+      } else {
+        setChartData([]);
+      }
+    } catch (e) {
+      console.error('Failed to fetch activity logs:', e);
+      setChartData([]);
+    }
+
     setIsLoading(false);
   };
 
@@ -45,14 +83,14 @@ export const UserProfileModal = ({ userId, onClose }: UserProfileModalProps) => 
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={onClose}
         className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
       />
-      
+
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -76,7 +114,7 @@ export const UserProfileModal = ({ userId, onClose }: UserProfileModalProps) => 
               </div>
               <h2 className="text-xl font-black text-slate-800 mb-1">{profile.full_name}</h2>
               <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6">{profile.department}</p>
-              
+
               <div className="grid grid-cols-1 w-full gap-3">
                 <div className="bg-white p-3 rounded-2xl border border-slate-100 flex items-center gap-3">
                   <Trophy className="text-amber-500" size={18} />
@@ -104,50 +142,67 @@ export const UserProfileModal = ({ userId, onClose }: UserProfileModalProps) => 
 
               <div className="h-64 w-full mb-8">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={logs}>
+                  <BarChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis 
-                      dataKey="log_date" 
-                      axisLine={false} 
-                      tickLine={false} 
+                    <XAxis
+                      dataKey="date"
+                      axisLine={false}
+                      tickLine={false}
                       tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 600 }}
-                      tickFormatter={(val) => new Date(val).toLocaleDateString('en-US', { weekday: 'short' })}
                     />
                     <YAxis hide />
-                    <Tooltip 
+                    <Tooltip
                       cursor={{ fill: '#f8fafc' }}
-                      content={({ active, payload }) => {
+                      content={({ active, payload, label }) => {
                         if (active && payload && payload.length) {
+                          const chantingVal = payload.find((p: any) => p.dataKey === 'Chanting')?.value || 0;
+                          const readingVal = payload.find((p: any) => p.dataKey === 'Reading')?.value || 0;
+
                           return (
-                            <div className="bg-slate-900 text-white p-3 rounded-xl text-xs font-bold shadow-xl">
-                              {payload[0].value} Points
+                            <div className="bg-white/95 backdrop-blur-sm p-4 rounded-2xl shadow-xl border border-slate-100/80 text-left min-w-[150px] z-50">
+                              <p className="text-xs font-black text-slate-800 mb-2">{label}</p>
+                              {Number(chantingVal) > 0 && (
+                                <p className="text-[11px] font-bold text-orange-500 flex items-center gap-1.5 mb-1">
+                                  <span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />
+                                  Chanting: {chantingVal} pts
+                                </p>
+                              )}
+                              {Number(readingVal) > 0 && (
+                                <p className="text-[11px] font-bold text-teal-600 flex items-center gap-1.5 mb-1">
+                                  <span className="w-2 h-2 rounded-full bg-teal-500 inline-block" />
+                                  Reading: {readingVal} pts
+                                </p>
+                              )}
                             </div>
                           );
                         }
                         return null;
                       }}
                     />
-                    <Bar dataKey="points_earned" radius={[6, 6, 0, 0]} barSize={32}>
-                      {logs.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={index === logs.length - 1 ? '#4f46e5' : '#e2e8f0'} />
-                      ))}
-                    </Bar>
+                    <Bar dataKey="Chanting" stackId="a" fill="#f97316" />
+                    <Bar dataKey="Reading" stackId="a" fill="#14b8a6" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
-                <div className="text-center">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Chanting</p>
-                  <p className="text-lg font-black text-slate-800">{profile.target_chanting}</p>
+              {/* Commitment Section */}
+              <div className="border-t border-slate-100 pt-6">
+                <div className="flex items-center gap-2 mb-3.5 justify-center md:justify-start">
+                  <span className="text-sm">🎯</span>
+                  <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest leading-none">
+                    Daily Sadhana Commitment
+                  </h4>
                 </div>
-                <div className="text-center">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Reading</p>
-                  <p className="text-lg font-black text-slate-800">{profile.target_reading}m</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Hearing</p>
-                  <p className="text-lg font-black text-slate-800">{profile.target_hearing}m</p>
+
+                <div className="grid grid-cols-2 gap-3 bg-slate-50/50 p-4 rounded-2xl border border-slate-100/50">
+                  <div className="text-center border-r border-slate-200/50">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Chanting</p>
+                    <p className="text-base font-black text-slate-800">{profile.target_chanting} Rounds</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Reading</p>
+                    <p className="text-base font-black text-slate-800">{profile.target_reading} Min</p>
+                  </div>
                 </div>
               </div>
             </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { motion, useSpring, useMotionValue, useTransform } from 'framer-motion';
 
 interface AvatarTierProps {
   tier: number;
@@ -7,113 +7,128 @@ interface AvatarTierProps {
 }
 
 export const AvatarTier = ({ tier, className = '' }: AvatarTierProps) => {
-  const getTierContent = () => {
+  const images: Record<number, string> = {
+    1: '/levels/noob.png',
+    2: '/levels/survivor.png',
+    3: '/levels/hustler.png',
+    4: '/levels/champion.png',
+    5: '/levels/legend.png',
+    6: '/levels/superhuman.png'
+  };
+
+  // Ultra-responsive spring physics for a liquid-smooth 3D parallax tilt
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  
+  const rotateX = useSpring(useTransform(y, [-120, 120], [15, -15]), { damping: 25, stiffness: 220 });
+  const rotateY = useSpring(useTransform(x, [-120, 120], [-15, 15]), { damping: 25, stiffness: 220 });
+
+  function handleMouseMove(event: React.MouseEvent<HTMLDivElement, MouseEvent>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
+    const mouseX = event.clientX - rect.left - width / 2;
+    const mouseY = event.clientY - rect.top - height / 2;
+    x.set(mouseX);
+    y.set(mouseY);
+  }
+
+  function handleMouseLeave() {
+    x.set(0);
+    y.set(0);
+  }
+
+  const getTierGlow = () => {
     switch (tier) {
-      case 1: // 0-99: Simple meditating figure
-        return (
-          <svg viewBox="0 0 100 100" className="w-full h-full text-slate-400">
-            <motion.circle cx="50" cy="35" r="15" fill="currentColor" />
-            <motion.path d="M50 55 C30 55, 20 85, 20 90 L80 90 C80 85, 70 55, 50 55" fill="currentColor" />
-          </svg>
-        );
-      case 2: // 100-299: Meditating with amber glow
-        return (
-          <svg viewBox="0 0 100 100" className="w-full h-full text-amber-500">
-            <defs>
-              <filter id="glow2" x="-20%" y="-20%" width="140%" height="140%">
-                <feGaussianBlur stdDeviation="3" result="blur" />
-                <feComposite in="SourceGraphic" in2="blur" operator="over" />
-              </filter>
-            </defs>
-            <motion.g filter="url(#glow2)" animate={{ opacity: [0.6, 1, 0.6] }} transition={{ duration: 3, repeat: Infinity }}>
-              <circle cx="50" cy="35" r="15" fill="currentColor" />
-              <path d="M50 55 C30 55, 20 85, 20 90 L80 90 C80 85, 70 55, 50 55" fill="currentColor" />
-            </motion.g>
-          </svg>
-        );
-      case 3: // 300-499: Yogi with saffron halo
-        return (
-          <svg viewBox="0 0 100 100" className="w-full h-full text-orange-500">
-            <defs>
-              <filter id="glow3" stdDeviation="5" />
-            </defs>
-            <motion.circle cx="50" cy="35" r="22" stroke="currentColor" strokeWidth="2" fill="none" opacity="0.3" animate={{ rotate: 360 }} transition={{ duration: 10, repeat: Infinity, ease: "linear" }} />
-            <motion.g filter="url(#glow3)" animate={{ scale: [0.98, 1.02, 0.98] }} transition={{ duration: 2, repeat: Infinity }}>
-              <circle cx="50" cy="35" r="16" fill="currentColor" />
-              <path d="M50 55 C30 55, 20 85, 20 90 L80 90 C80 85, 70 55, 50 55" fill="currentColor" />
-            </motion.g>
-          </svg>
-        );
-      case 4: // 500-749: Standing with flowing robes
-        return (
-          <svg viewBox="0 0 100 100" className="w-full h-full text-yellow-500">
-            <motion.g animate={{ y: [0, -5, 0] }} transition={{ duration: 4, repeat: Infinity }}>
-              <circle cx="50" cy="25" r="12" fill="currentColor" />
-              <path d="M50 40 L30 80 L70 80 Z" fill="currentColor" />
-              <motion.path 
-                d="M30 45 Q20 60 30 80 M70 45 Q80 60 70 80" 
-                stroke="currentColor" 
-                strokeWidth="4" 
-                fill="none" 
-                strokeLinecap="round"
-                animate={{ strokeDashoffset: [0, 20, 0] }}
-                transition={{ duration: 2, repeat: Infinity }}
-              />
-            </motion.g>
-          </svg>
-        );
-      case 5: // 750-999: Divine warrior with cosmic glow
-        return (
-          <svg viewBox="0 0 100 100" className="w-full h-full text-indigo-400">
-            <defs>
-              <radialGradient id="cosmic">
-                <stop offset="0%" stopColor="#818cf8" />
-                <stop offset="100%" stopColor="#4338ca" />
-              </radialGradient>
-            </defs>
-            <motion.circle cx="50" cy="50" r="45" fill="url(#cosmic)" opacity="0.2" animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 5, repeat: Infinity }} />
-            <motion.g animate={{ x: [0, 2, -2, 0] }} transition={{ duration: 0.2, repeat: Infinity }}>
-              <circle cx="50" cy="25" r="14" fill="currentColor" />
-              <path d="M50 40 L20 60 L30 90 L70 90 L80 60 Z" fill="currentColor" />
-              <circle cx="50" cy="55" r="5" fill="white" />
-            </motion.g>
-          </svg>
-        );
-      case 6: // 1000+: Superhero Yogi with shimmer
-        return (
-          <svg viewBox="0 0 100 100" className="w-full h-full">
-            <defs>
-              <linearGradient id="shimmer" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#fbbf24">
-                  <animate attributeName="offset" values="-1; 2" dur="2s" repeatCount="indefinite" />
-                </stop>
-                <stop offset="50%" stopColor="#fffbeb">
-                  <animate attributeName="offset" values="-0.5; 2.5" dur="2s" repeatCount="indefinite" />
-                </stop>
-                <stop offset="100%" stopColor="#fbbf24">
-                  <animate attributeName="offset" values="0; 3" dur="2s" repeatCount="indefinite" />
-                </stop>
-              </linearGradient>
-            </defs>
-            <motion.path 
-              d="M50 5 L90 50 L50 95 L10 50 Z" 
-              fill="url(#shimmer)" 
-              animate={{ rotate: [0, 5, -5, 0] }} 
-              transition={{ duration: 4, repeat: Infinity }}
-            />
-            <circle cx="50" cy="35" r="15" fill="#1e1b4b" />
-            <path d="M50 55 C30 55, 20 85, 20 90 L80 90 C80 85, 70 55, 50 55" fill="#1e1b4b" />
-            <motion.path d="M40 20 L50 10 L60 20" stroke="#fbbf24" strokeWidth="4" fill="none" />
-          </svg>
-        );
+      case 1:
+        return 'from-slate-400/20 to-slate-500/20';
+      case 2:
+        return 'from-teal-400/30 to-emerald-500/30';
+      case 3:
+        return 'from-orange-400/40 to-red-500/40';
+      case 4:
+        return 'from-blue-500/40 to-indigo-600/40';
+      case 5:
+        return 'from-purple-500/50 via-pink-500/50 to-indigo-500/50';
+      case 6:
+        return 'from-amber-400/60 via-yellow-500/60 to-orange-500/60';
       default:
-        return null;
+        return 'from-slate-400/20 to-slate-500/20';
     }
   };
 
+  const imageUrl = images[tier] || '/levels/noob.png';
+
   return (
-    <div className={`relative ${className}`}>
-      {getTierContent()}
+    <div 
+      className={`relative w-full h-full flex items-center justify-center ${className}`}
+      style={{ perspective: 1200 }}
+    >
+      <motion.div
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+        style={{
+          rotateX,
+          rotateY,
+          transformStyle: 'preserve-3d',
+        }}
+        className="w-full h-full flex items-center justify-center relative cursor-pointer group"
+      >
+        {/* Dynamic Glow Halo directly behind the floating transparent PNG */}
+        <div 
+          className={`
+            absolute w-[85%] h-[85%] rounded-full blur-3xl opacity-30 group-hover:opacity-75 transition-opacity duration-500 bg-gradient-to-tr
+            ${getTierGlow()}
+          `}
+          style={{ transform: 'translateZ(-40px)' }}
+        />
+
+        {/* Special Legendary Cosmic Rotating Rings exclusively for Level 6 Superhuman */}
+        {tier === 6 && (
+          <>
+            {/* Outer Golden Flare Ring */}
+            <motion.div 
+              animate={{ rotate: 360 }}
+              transition={{ duration: 15, repeat: Infinity, ease: 'linear' }}
+              className="absolute w-[115%] h-[115%] rounded-full border-2 border-dashed border-amber-400/30 opacity-70 blur-[1px]"
+              style={{ transform: 'translateZ(-20px)' }}
+            />
+            {/* Inner Shimmering Solar Ring */}
+            <motion.div 
+              animate={{ rotate: -360 }}
+              transition={{ duration: 25, repeat: Infinity, ease: 'linear' }}
+              className="absolute w-[100%] h-[100%] rounded-full border border-double border-yellow-400/40 opacity-80 blur-[2px]"
+              style={{ transform: 'translateZ(-10px)' }}
+            />
+            {/* Glowing Golden Core */}
+            <div 
+              className="absolute w-[90%] h-[90%] rounded-full bg-amber-400/10 blur-2xl animate-pulse"
+              style={{ transform: 'translateZ(-30px)' }}
+            />
+          </>
+        )}
+
+        {/* Level 5 (Legend) Ambient Purple/Pink Flare Ring */}
+        {tier === 5 && (
+          <motion.div 
+            animate={{ rotate: 360 }}
+            transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
+            className="absolute w-[110%] h-[110%] rounded-full border border-dashed border-purple-400/30 opacity-60 blur-[1px]"
+            style={{ transform: 'translateZ(-15px)' }}
+          />
+        )}
+
+        {/* Floating Level Image with 3D Parallax Depth */}
+        <motion.img 
+          src={imageUrl} 
+          alt="Sadhana Level Rank" 
+          className="w-full h-full object-contain relative z-10"
+          style={{ 
+            transform: 'translateZ(60px)',
+            filter: 'drop-shadow(0 25px 35px rgba(0,0,0,0.18))'
+          }}
+        />
+      </motion.div>
     </div>
   );
 };

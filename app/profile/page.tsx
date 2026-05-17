@@ -16,10 +16,20 @@ import {
 } from 'recharts';
 import { toast } from 'react-hot-toast';
 
+const TIER_NAMES: Record<number, string> = {
+  1: 'Noob',
+  2: 'Survivor',
+  3: 'Hustler',
+  4: 'Champion',
+  5: 'Legend',
+  6: 'Superhuman'
+};
+
 export default function ProfilePage() {
   const { user } = useAuthStore();
   const [profile, setProfile] = useState<any>(null);
   const [logs, setLogs] = useState<any[]>([]);
+  const [bonusPointsList, setBonusPointsList] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>({});
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({
@@ -68,6 +78,13 @@ export default function ProfilePage() {
         .order('log_date', { ascending: false });
       setLogs(activityLogs || []);
 
+      // Fetch Bonus Points
+      const { data: bonusData } = await supabase
+        .from('bonus_points')
+        .select('*')
+        .eq('user_id', user?.id);
+      setBonusPointsList(bonusData || []);
+
       // Fetch Settings
       const { data: appSettings } = await supabase.from('app_settings').select('*');
       const settingsMap = appSettings?.reduce((acc: any, curr: any) => {
@@ -83,25 +100,49 @@ export default function ProfilePage() {
   };
 
   const pointsBreakdown = useMemo(() => {
+    if (!profile) return { chanting: 0, reading: 0 };
     return logs.reduce((acc, log) => {
-      const chantingPts = log.chanting_rounds * parseInt(settings.points_per_chanting_round || '2');
-      const readingPts = log.reading_minutes * parseInt(settings.points_per_reading_minute || '1');
-      const hearingPts = log.hearing_minutes * parseInt(settings.points_per_hearing_minute || '1');
+      const chantingPts = profile.target_chanting > 0 
+        ? (log.chanting_rounds / profile.target_chanting) * 8 
+        : 0;
+      const readingPts = profile.target_reading > 0 
+        ? (log.reading_minutes / profile.target_reading) * 30 
+        : 0;
 
       acc.chanting += chantingPts;
       acc.reading += readingPts;
-      acc.hearing += hearingPts;
       return acc;
-    }, { chanting: 0, reading: 0, hearing: 0 });
-  }, [logs, settings]);
+    }, { chanting: 0, reading: 0 });
+  }, [logs, profile]);
+
+  const parseLocalDate = (dateStr: string) => {
+    if (!dateStr) return new Date();
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  };
 
   const challengeProgress = useMemo(() => {
-    if (!settings.challenge_start_date) return { day: 0, logs: 0 };
-    const start = new Date(settings.challenge_start_date);
+    if (!settings.challenge_start_date || !settings.challenge_end_date) {
+      return { day: 0, total: 26, logs: logs.length };
+    }
+    const start = parseLocalDate(settings.challenge_start_date);
+    start.setHours(0, 0, 0, 0);
+    const end = parseLocalDate(settings.challenge_end_date);
+    end.setHours(23, 59, 59, 999);
+    
     const today = new Date();
-    const diffTime = Math.abs(today.getTime() - start.getTime());
-    const day = Math.min(26, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-    return { day, logs: logs.length };
+    today.setHours(0, 0, 0, 0);
+    
+    const total = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    let day = 0;
+    if (today >= start) {
+      if (today > end) {
+        day = total;
+      } else {
+        day = Math.round((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      }
+    }
+    return { day, total, logs: logs.length };
   }, [settings, logs]);
 
   const chartData = useMemo(() => {
@@ -120,16 +161,35 @@ export default function ProfilePage() {
 
       const log = logs.find(l => l.log_date === dStr);
 
+      const chantingPts = log && profile?.target_chanting > 0
+        ? (log.chanting_rounds / profile.target_chanting) * 8
+        : 0;
+      const readingPts = log && profile?.target_reading > 0
+        ? (log.reading_minutes / profile.target_reading) * 30
+        : 0;
+
+      // Find bonuses for this day
+      const dayBonuses = bonusPointsList.filter((b: any) => {
+        const bDate = new Date(b.created_at);
+        const y = bDate.getFullYear();
+        const m = String(bDate.getMonth() + 1).padStart(2, '0');
+        const dayStr = String(bDate.getDate()).padStart(2, '0');
+        return `${y}-${m}-${dayStr}` === dStr;
+      });
+      const bonusPts = dayBonuses.reduce((acc: number, curr: any) => acc + curr.points, 0);
+      const bonusDetails = dayBonuses.map((b: any) => `${b.title || 'Bonus'}: +${b.points}`).join(', ');
+
       last14.push({
         date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        Chanting: log ? log.chanting_rounds * parseInt(settings.points_per_chanting_round || '2') : 0,
-        Reading: log ? log.reading_minutes * parseInt(settings.points_per_reading_minute || '1') : 0,
-        Hearing: log ? log.hearing_minutes * parseInt(settings.points_per_hearing_minute || '1') : 0,
+        Chanting: Math.round(chantingPts),
+        Reading: Math.round(readingPts),
+        Bonus: Math.round(bonusPts),
+        'Bonus Reason': bonusDetails || undefined,
         isMissing: !log
       });
     }
     return last14;
-  }, [logs, settings]);
+  }, [logs, profile, bonusPointsList]);
 
   const currentTier = useMemo(() => {
     const pts = profile?.total_points || 0;
@@ -150,6 +210,15 @@ export default function ProfilePage() {
   }, [profile]);
 
   const handleUpdateTargets = async () => {
+    if (editData.target_chanting < (profile?.target_chanting || 0)) {
+      toast.error("Spiritual commitments can only be increased to reach higher heights, not decreased! 🚀");
+      return;
+    }
+    if (editData.target_reading < (profile?.target_reading || 0)) {
+      toast.error("Spiritual commitments can only be increased to reach higher heights, not decreased! 🚀");
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('users')
@@ -178,7 +247,12 @@ export default function ProfilePage() {
           </div>
 
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-black text-slate-900 mb-2">Level {currentTier} Sadhaka</h1>
+            <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 mb-2 tracking-tight">
+              {TIER_NAMES[currentTier]}
+            </h1>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">
+              Your Current Level Status
+            </p>
             <div className="flex items-center justify-center gap-2">
               <div className={profile?.streak_count > 7 ? 'text-orange-500' : 'text-slate-300'}>
                 <Flame size={24} fill="currentColor" />
@@ -189,8 +263,8 @@ export default function ProfilePage() {
 
           <div className="w-full max-w-2xl">
             <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">
-              <span>Tier 1</span>
-              <span>Tier 6</span>
+              <span>{TIER_NAMES[1]}</span>
+              <span>{TIER_NAMES[6]}</span>
             </div>
             <div className="h-4 bg-slate-100 rounded-full relative mb-4">
               <motion.div
@@ -206,7 +280,7 @@ export default function ProfilePage() {
             </div>
             {nextTierInfo && (
               <p className="text-center text-sm font-bold text-indigo-600">
-                ✨ {nextTierInfo.points} more points to reach Tier {nextTierInfo.tier}
+                ✨ {nextTierInfo.points} more points to reach {TIER_NAMES[nextTierInfo.tier]} level
               </p>
             )}
           </div>
@@ -220,12 +294,28 @@ export default function ProfilePage() {
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Points</p>
           <p className="text-4xl font-black text-slate-900">{profile?.total_points?.toLocaleString() || 0}</p>
         </div>
-        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm text-center">
+        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm text-center relative group">
+          {/* Info Button with Hover Tooltip */}
+          <div className="absolute top-6 right-6 text-slate-300 hover:text-indigo-500 cursor-pointer transition-colors">
+            <Info size={16} />
+            <div className="absolute bottom-full right-0 mb-2 w-64 p-3.5 bg-slate-900/95 backdrop-blur-sm text-white text-[11px] font-medium leading-relaxed rounded-2xl shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-200 pointer-events-none origin-bottom-right z-30 text-left border border-slate-800">
+              <strong className="block text-indigo-400 font-bold mb-1">Goal-Based Consistency 🎯</strong>
+              This streak is not about how much consistent you are filling the dates; it is all about how much consistently you are achieving your goals. This is the streak out of your goals, not because of the dates you filled consistently.
+            </div>
+          </div>
           <Zap className="mx-auto mb-3 text-indigo-500" size={32} />
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Best Streak</p>
           <p className="text-4xl font-black text-slate-900">{profile?.best_streak || 0}</p>
         </div>
-        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm text-center">
+        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm text-center relative group">
+          {/* Info Button with Hover Tooltip */}
+          <div className="absolute top-6 right-6 text-slate-300 hover:text-emerald-500 cursor-pointer transition-colors">
+            <Info size={16} />
+            <div className="absolute bottom-full right-0 mb-2 w-64 p-3.5 bg-slate-900/95 backdrop-blur-sm text-white text-[11px] font-medium leading-relaxed rounded-2xl shadow-2xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all duration-200 pointer-events-none origin-bottom-right z-30 text-left border border-slate-800">
+              <strong className="block text-emerald-400 font-bold mb-1">Automatic Protection 🛡️</strong>
+              Streak Shields automatically save your streak if you miss exactly 1 day. If you miss 2 or more days consecutively, the shield cannot save your streak and is not consumed.
+            </div>
+          </div>
           <Shield className="mx-auto mb-3 text-emerald-500" size={32} />
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Streak Shields</p>
           <p className="text-4xl font-black text-slate-900">{profile?.freeze_credits || 0}</p>
@@ -233,7 +323,7 @@ export default function ProfilePage() {
         <div className="bg-indigo-600 p-8 rounded-[2.5rem] text-white text-center shadow-xl shadow-indigo-100">
           <BookOpen className="mx-auto mb-3 opacity-60" size={32} />
           <p className="text-[10px] font-black opacity-60 uppercase tracking-widest mb-1">Challenge Day</p>
-          <p className="text-4xl font-black">{challengeProgress.day} <span className="text-sm opacity-60">/ 26</span></p>
+          <p className="text-4xl font-black">{challengeProgress.day} <span className="text-sm opacity-60">/ {challengeProgress.total}</span></p>
           <p className="text-[10px] font-bold mt-2 opacity-80">{challengeProgress.logs} logs submitted</p>
         </div>
       </section>
@@ -251,11 +341,10 @@ export default function ProfilePage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {[
               { label: 'Chanting', key: 'target_chanting', icon: '📿', unit: 'Rounds', color: 'bg-orange-50 text-orange-600' },
               { label: 'Reading', key: 'target_reading', icon: '📖', unit: 'Minutes', color: 'bg-teal-50 text-teal-600' },
-              { label: 'Hearing', key: 'target_hearing', icon: '🎧', unit: 'Minutes', color: 'bg-purple-50 text-purple-600' },
             ].map(item => (
               <div key={item.key} className={`p-6 rounded-3xl border border-slate-50 ${item.color.split(' ')[0]}`}>
                 <div className="flex items-center gap-3 mb-4">
@@ -266,7 +355,17 @@ export default function ProfilePage() {
                   <input
                     type="number"
                     value={(editData as any)[item.key]}
-                    onChange={(e) => setEditData({ ...editData, [item.key]: parseInt(e.target.value) || 0 })}
+                    onChange={(e) => {
+                      const newVal = parseInt(e.target.value) || 0;
+                      const originalVal = (profile as any)?.[item.key] || 0;
+                      if (newVal < originalVal) {
+                        toast.error(`Spiritual commitments can only be increased to reach higher heights, not decreased! 🚀`, {
+                          id: `decrease-prevent-${item.key}`
+                        });
+                        return;
+                      }
+                      setEditData({ ...editData, [item.key]: newVal });
+                    }}
                     className="w-full bg-white/50 p-2 rounded-lg font-black text-2xl outline-none border-2 border-indigo-200"
                   />
                 ) : (
@@ -283,7 +382,6 @@ export default function ProfilePage() {
             {[
               { label: 'Chanting', val: pointsBreakdown.chanting, color: 'bg-orange-500' },
               { label: 'Reading', val: pointsBreakdown.reading, color: 'bg-teal-500' },
-              { label: 'Hearing', val: pointsBreakdown.hearing, color: 'bg-purple-500' },
             ].map(item => (
               <div key={item.label}>
                 <div className="flex justify-between text-sm font-bold mb-2">
@@ -314,11 +412,37 @@ export default function ProfilePage() {
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 600 }} />
-                <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                <Tooltip 
+                  cursor={{ fill: '#f8fafc' }} 
+                  content={({ active, payload, label }) => {
+                    if (active && payload && payload.length) {
+                      const chantingVal = payload.find((p: any) => p.dataKey === 'Chanting')?.value || 0;
+                      const readingVal = payload.find((p: any) => p.dataKey === 'Reading')?.value || 0;
+
+                      return (
+                        <div className="bg-white/95 backdrop-blur-sm p-4 rounded-2xl shadow-xl border border-slate-100/80 text-left min-w-[150px] z-50">
+                          <p className="text-xs font-black text-slate-800 mb-2">{label}</p>
+                          {Number(chantingVal) > 0 && (
+                            <p className="text-[11px] font-bold text-orange-500 flex items-center gap-1.5 mb-1">
+                              <span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />
+                              Chanting: {chantingVal} pts
+                            </p>
+                          )}
+                          {Number(readingVal) > 0 && (
+                            <p className="text-[11px] font-bold text-teal-600 flex items-center gap-1.5 mb-1">
+                              <span className="w-2 h-2 rounded-full bg-teal-500 inline-block" />
+                              Reading: {readingVal} pts
+                            </p>
+                          )}
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
                 <Legend iconType="circle" />
                 <Bar dataKey="Chanting" stackId="a" fill="#f97316" />
-                <Bar dataKey="Reading" stackId="a" fill="#14b8a6" />
-                <Bar dataKey="Hearing" stackId="a" fill="#a855f7" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Reading" stackId="a" fill="#14b8a6" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -334,7 +458,7 @@ export default function ProfilePage() {
             targets={{
               chanting: profile?.target_chanting || 0,
               reading: profile?.target_reading || 0,
-              hearing: profile?.target_hearing || 0
+              hearing: 0
             }}
           />
           <div className="mt-8 flex justify-center gap-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">

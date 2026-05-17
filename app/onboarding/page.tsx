@@ -280,20 +280,7 @@ export default function OnboardingPage() {
                     </div>
                   )}
 
-                  {isFieldAllowed('target_hearing') && (
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-2">Target Hearing (Minutes/day)</label>
-                      <input
-                        type="number"
-                        name="target_hearing"
-                        value={formData.target_hearing}
-                        onChange={handleChange}
-                        min={5}
-                        max={240}
-                        className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-indigo-500 focus:bg-white transition-all outline-none"
-                      />
-                    </div>
-                  )}
+
 
                   <div className="flex gap-4 mt-8">
                     <button

@@ -103,47 +103,28 @@ export default function AdminSettings() {
           <form onSubmit={handleUpdateSetting} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="col-span-2">
-                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Challenge Title</label>
-                <input name="challenge_title" defaultValue={settings.challenge_title} className="w-full p-4 rounded-xl bg-slate-50 border-none outline-none font-bold" />
+                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Challenge Name</label>
+                <input name="challenge_title" defaultValue={settings.challenge_title} className="w-full p-4 rounded-xl bg-slate-50 border-none outline-none font-bold" required />
               </div>
               <div>
-                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Start Date</label>
-                <input name="challenge_start_date" type="date" defaultValue={settings.challenge_start_date} className="w-full p-4 rounded-xl bg-slate-50 border-none outline-none font-bold" />
+                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Starting Date</label>
+                <input name="challenge_start_date" type="date" defaultValue={settings.challenge_start_date} className="w-full p-4 rounded-xl bg-slate-50 border-none outline-none font-bold" required />
               </div>
               <div>
                 <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">End Date</label>
-                <input name="challenge_end_date" type="date" defaultValue={settings.challenge_end_date} className="w-full p-4 rounded-xl bg-slate-50 border-none outline-none font-bold" />
-              </div>
-              <div>
-                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Log Cutoff (Hour 0-23)</label>
-                <input name="log_cutoff_hour" type="number" defaultValue={settings.log_cutoff_hour} className="w-full p-4 rounded-xl bg-slate-50 border-none outline-none font-bold" />
-              </div>
-              <div>
-                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Freeze Credits on Join</label>
-                <input name="freeze_credits_on_join" type="number" defaultValue={settings.freeze_credits_on_join} className="w-full p-4 rounded-xl bg-slate-50 border-none outline-none font-bold" />
+                <input name="challenge_end_date" type="date" defaultValue={settings.challenge_end_date} className="w-full p-4 rounded-xl bg-slate-50 border-none outline-none font-bold" required />
               </div>
             </div>
 
-            <div className="pt-6 border-t border-slate-50">
-              <h4 className="font-black text-slate-800 mb-4">Points & Bonus</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Chanting / Round</label>
-                  <input name="points_per_chanting_round" type="number" defaultValue={settings.points_per_chanting_round} className="w-full p-4 rounded-xl bg-slate-50 border-none outline-none font-bold" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Reading / Min</label>
-                  <input name="points_per_reading_minute" type="number" defaultValue={settings.points_per_reading_minute} className="w-full p-4 rounded-xl bg-slate-50 border-none outline-none font-bold" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Hearing / Min</label>
-                  <input name="points_per_hearing_minute" type="number" defaultValue={settings.points_per_hearing_minute} className="w-full p-4 rounded-xl bg-slate-50 border-none outline-none font-bold" />
-                </div>
-              </div>
-            </div>
+            {/* Hidden safe defaults to prevent blocking the core application logic */}
+            <input type="hidden" name="log_cutoff_hour" value={settings.log_cutoff_hour || '21'} />
+            <input type="hidden" name="freeze_credits_on_join" value={settings.freeze_credits_on_join || '1'} />
+            <input type="hidden" name="points_per_chanting_round" value={settings.points_per_chanting_round || '8'} />
+            <input type="hidden" name="points_per_reading_minute" value={settings.points_per_reading_minute || '30'} />
+            <input type="hidden" name="points_per_hearing_minute" value="0" />
 
             <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all">
-              Save All Settings
+              Save Challenge Settings
             </button>
           </form>
         </section>

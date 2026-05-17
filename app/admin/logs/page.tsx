@@ -93,7 +93,7 @@ export default function AdminLogs() {
                   <td className="p-6 font-bold text-slate-900">{l.users?.full_name}</td>
                   <td className="p-6 font-bold text-slate-600">{new Date(l.log_date).toLocaleDateString()}</td>
                   <td className="p-6">
-                    <p className="text-xs font-bold text-slate-500">📿 {l.chanting_rounds} · 📖 {l.reading_minutes}m · 🎧 {l.hearing_minutes}m</p>
+                    <p className="text-xs font-bold text-slate-500">📿 {l.chanting_rounds} · 📖 {l.reading_minutes}m</p>
                   </td>
                   <td className="p-6 font-black text-indigo-600">+{l.points_earned}</td>
                   <td className="p-6">

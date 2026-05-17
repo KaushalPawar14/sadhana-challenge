@@ -35,36 +35,110 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
   const [pointsResult, setPointsResult] = useState<CalculationResult | null>(null);
   const [appSettings, setAppSettings] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [alreadyLoggedDates, setAlreadyLoggedDates] = useState<string[]>([]);
+  const [isFetching, setIsFetching] = useState(false);
+
+  // Generate list of unfulfilled dates (past/present only, not already logged)
+  const unfulfilledDates = React.useMemo(() => {
+    if (!appSettings?.challenge_start_date) return [];
+    
+    const dates: { value: string; label: string }[] = [];
+    const [sYear, sMonth, sDay] = appSettings.challenge_start_date.split('-').map(Number);
+    const start = new Date(sYear, sMonth - 1, sDay);
+    start.setHours(0, 0, 0, 0);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Scan from start date to today
+    let current = new Date(start);
+    while (current <= today) {
+      const yStr = current.getFullYear();
+      const mStr = String(current.getMonth() + 1).padStart(2, '0');
+      const dStr = String(current.getDate()).padStart(2, '0');
+      const dateStr = `${yStr}-${mStr}-${dStr}`;
+      
+      if (!alreadyLoggedDates.includes(dateStr)) {
+        dates.push({
+          value: dateStr,
+          label: current.toLocaleDateString('en-US', { 
+            weekday: 'short', 
+            month: 'short', 
+            day: 'numeric', 
+            year: 'numeric' 
+          })
+        });
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    
+    // Sort descending so most recent unlogged date is at the top
+    return dates.reverse();
+  }, [appSettings, alreadyLoggedDates]);
+
+  // Reactively sync selected logDate with the first available unfulfilled date
+  React.useEffect(() => {
+    if (unfulfilledDates.length > 0 && !unfulfilledDates.some(d => d.value === logDate)) {
+      setLogDate(unfulfilledDates[0].value);
+    }
+  }, [unfulfilledDates, logDate]);
 
   useEffect(() => {
     if (isOpen && user) {
+      setAlreadyLoggedDates([]);
       fetchData();
     }
   }, [isOpen, user]);
 
   const fetchData = async () => {
-    // Fetch settings
-    const { data: settings } = await supabase.from('app_settings').select('*');
-    const settingsMap = settings?.reduce((acc: any, curr: any) => {
-      acc[curr.key] = curr.value;
-      return acc;
-    }, {});
-    setAppSettings(settingsMap);
+    setIsFetching(true);
+    try {
+      // Fetch settings
+      const { data: settings } = await supabase.from('app_settings').select('*');
+      const settingsMap = settings?.reduce((acc: any, curr: any) => {
+        acc[curr.key] = curr.value;
+        return acc;
+      }, {});
+      setAppSettings(settingsMap);
 
-    // Fetch user profile for targets and current streak
-    const { data: profile } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', user?.id)
-      .single();
-    setUserProfile(profile);
+      // Fetch user profile for targets and current streak
+      const { data: profile } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', user?.id)
+        .single();
+      setUserProfile(profile);
 
-    // Default form data to personal targets
-    setFormData({
-      chanting_rounds: profile?.target_chanting || 0,
-      reading_minutes: profile?.target_reading || 0,
-      hearing_minutes: profile?.target_hearing || 0
-    });
+      // Fetch existing logs to find already completed dates
+      const { data: existingLogs } = await supabase
+        .from('activity_logs')
+        .select('log_date')
+        .eq('user_id', user?.id);
+      
+      const loggedDates = existingLogs?.map(l => l.log_date) || [];
+      setAlreadyLoggedDates(loggedDates);
+
+      // Default to the first unlogged past date going backward starting from today
+      const today = new Date();
+      let checkDate = new Date(today);
+      let checkDateStr = checkDate.toISOString().split('T')[0];
+      while (loggedDates.includes(checkDateStr)) {
+        checkDate.setDate(checkDate.getDate() - 1);
+        checkDateStr = checkDate.toISOString().split('T')[0];
+      }
+      setLogDate(checkDateStr);
+
+      // Default form data to personal targets
+      setFormData({
+        chanting_rounds: profile?.target_chanting || 0,
+        reading_minutes: profile?.target_reading || 0,
+        hearing_minutes: 0
+      });
+    } catch (e) {
+      console.error("Error fetching modal data:", e);
+    } finally {
+      setIsFetching(false);
+    }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -87,8 +161,8 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
       return;
     }
 
-    if (formData.chanting_rounds === 0 && formData.reading_minutes === 0 && formData.hearing_minutes === 0) {
-      if (!confirm("Logging zero for all? That's okay — consistency matters. Confirm?")) return;
+    if (formData.chanting_rounds === 0 && formData.reading_minutes === 0) {
+      if (!confirm("Logging zero for chanting and reading? That's okay — consistency matters. Confirm?")) return;
     }
 
     setIsLoading(true);
@@ -118,11 +192,11 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
         ...formData,
         target_chanting: userProfile.target_chanting,
         target_reading: userProfile.target_reading,
-        target_hearing: userProfile.target_hearing,
+        target_hearing: 0,
         streak_count: streakUpdate.new_streak,
         points_per_chanting: parseInt(appSettings.points_per_chanting_round || '2'),
         points_per_reading: parseInt(appSettings.points_per_reading_minute || '1'),
-        points_per_hearing: parseInt(appSettings.points_per_hearing_minute || '1'),
+        points_per_hearing: 0,
         streak_bonus_multiplier: parseFloat(appSettings.streak_bonus_multiplier || '0.1')
       });
 
@@ -223,53 +297,80 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Log Date</label>
-                <input
-                  type="date"
-                  value={logDate}
-                  onChange={(e) => setLogDate(e.target.value)}
-                  className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-indigo-500 outline-none font-semibold text-slate-700"
-                />
+            {isFetching ? (
+              <div className="py-20 text-center font-bold text-slate-400 flex flex-col items-center justify-center gap-3">
+                <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                <span>Checking your commitments...</span>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Log Date</label>
+                {unfulfilledDates.length > 0 ? (
+                  <div className="relative">
+                    <select
+                      value={logDate}
+                      onChange={(e) => setLogDate(e.target.value)}
+                      className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-indigo-500 focus:bg-white outline-none font-bold text-slate-700 cursor-pointer appearance-none pr-10 transition-all"
+                    >
+                      {unfulfilledDates.map((d) => (
+                        <option key={d.value} value={d.value} className="font-bold">
+                          {d.label} {d.value === new Date().toISOString().split('T')[0] ? ' (Today) 🎯' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-indigo-500 font-bold">
+                      ▼
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-6 bg-emerald-50 border-2 border-emerald-100 text-emerald-700 rounded-3xl text-center font-bold">
+                    <p className="text-sm mb-1">🎉 All Days Logged!</p>
+                    <p className="text-[10px] uppercase tracking-wider opacity-85">You have successfully logged all available days of this challenge.</p>
+                  </div>
+                )}
               </div>
 
-              {[
-                { label: 'Chanting Rounds', name: 'chanting_rounds', target: userProfile?.target_chanting, icon: '📿' },
-                { label: 'Reading Minutes', name: 'reading_minutes', target: userProfile?.target_reading, icon: '📖' },
-                { label: 'Hearing Minutes', name: 'hearing_minutes', target: userProfile?.target_hearing, icon: '🎧' },
-              ].map((field) => (
-                <div key={field.name}>
-                  <div className="flex justify-between items-end mb-2">
-                    <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                      <span>{field.icon}</span> {field.label}
-                    </label>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Goal: {field.target}</span>
-                  </div>
-                  <input
-                    type="number"
-                    name={field.name}
-                    value={(formData as any)[field.name]}
-                    onChange={handleInputChange}
-                    className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-indigo-500 outline-none font-bold text-lg text-slate-800"
-                  />
-                </div>
-              ))}
+              {unfulfilledDates.length > 0 && (
+                <>
+                  {[
+                    { label: 'Chanting Rounds', name: 'chanting_rounds', target: userProfile?.target_chanting, icon: '📿' },
+                    { label: 'Reading Minutes', name: 'reading_minutes', target: userProfile?.target_reading, icon: '📖' },
+                  ].map((field) => (
+                    <div key={field.name}>
+                      <div className="flex justify-between items-end mb-2">
+                        <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                          <span>{field.icon}</span> {field.label}
+                        </label>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Goal: {field.target}</span>
+                      </div>
+                      <input
+                        type="number"
+                        name={field.name}
+                        value={(formData as any)[field.name]}
+                        onChange={handleInputChange}
+                        className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-indigo-500 outline-none font-bold text-lg text-slate-800"
+                      />
+                    </div>
+                  ))}
 
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full bg-indigo-600 text-white py-5 rounded-[1.5rem] font-black text-lg hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 flex items-center justify-center gap-3 mt-4 disabled:opacity-50"
-              >
-                {isLoading ? 'Saving...' : (
-                  <>Submit Daily Log <ChevronRight size={20} /></>
-                )}
-              </button>
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full bg-indigo-600 text-white py-5 rounded-[1.5rem] font-black text-lg hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 flex items-center justify-center gap-3 mt-4 disabled:opacity-50"
+                  >
+                    {isLoading ? 'Saving...' : (
+                      <>Submit Daily Log <ChevronRight size={20} /></>
+                    )}
+                  </button>
 
-              <p className="text-center text-[10px] text-slate-400 font-medium uppercase tracking-widest">
-                Bonus points are awarded by the admin!
-              </p>
+                  <p className="text-center text-[10px] text-slate-400 font-medium uppercase tracking-widest">
+                    Bonus points are awarded by the admin!
+                  </p>
+                </>
+              )}
             </form>
+            )}
           </div>
         ) : (
           <div className="p-10 text-center">

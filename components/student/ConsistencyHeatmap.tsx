@@ -30,8 +30,7 @@ export const ConsistencyHeatmap = ({ logs, startDate, targets }: HeatmapProps) =
     if (log) {
       const c = targets.chanting > 0 ? Math.min(1, log.chanting_rounds / targets.chanting) : 1;
       const r = targets.reading > 0 ? Math.min(1, log.reading_minutes / targets.reading) : 1;
-      const h = targets.hearing > 0 ? Math.min(1, log.hearing_minutes / targets.hearing) : 1;
-      completion = ((c + r + h) / 3) * 100;
+      completion = ((c + r) / 2) * 100;
     }
 
     const dTime = new Date(date).setHours(0, 0, 0, 0);

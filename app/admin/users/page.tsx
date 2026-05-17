@@ -62,8 +62,22 @@ export default function AdminUsers() {
       return;
     }
 
+    // Fetch the freshest user data to get the absolute most current total_points directly from DB
+    const { data: freshUser, error: freshError } = await supabase
+      .from('users')
+      .select('total_points')
+      .eq('id', selectedUser.id)
+      .single();
+
+    if (freshError || !freshUser) {
+      toast.error("Failed to retrieve current user points");
+      return;
+    }
+
+    const currentTotalPoints = freshUser.total_points || 0;
+
     const { error: userError } = await supabase.from('users').update({
-      total_points: (selectedUser.total_points || 0) + points
+      total_points: currentTotalPoints + points
     }).eq('id', selectedUser.id);
 
     if (userError) toast.error("Failed to update user points");
