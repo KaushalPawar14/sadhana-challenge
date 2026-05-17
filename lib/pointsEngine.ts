@@ -21,11 +21,11 @@ export interface CalculationResult {
 
 export function calculatePoints(input: ActivityInput): CalculationResult {
   const chantingPoints = input.target_chanting > 0 
-    ? (input.chanting_rounds / input.target_chanting) * 8 
+    ? (input.chanting_rounds / input.target_chanting) * 10 
     : 0;
 
   const readingPoints = input.target_reading > 0 
-    ? (input.reading_minutes / input.target_reading) * 30 
+    ? (input.reading_minutes / input.target_reading) * 10 
     : 0;
 
   const base_points = chantingPoints + readingPoints;

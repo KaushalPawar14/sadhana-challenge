@@ -19,6 +19,7 @@ export default function LeaderboardPage() {
   const [hasUnloggedDays, setHasUnloggedDays] = useState(false);
   const [liveActivities, setLiveActivities] = useState<any[]>([]);
   const [bonusEvents, setBonusEvents] = useState<any[]>([]);
+  const [isRulesOpen, setIsRulesOpen] = useState(false);
 
   // Stable client setup to prevent warnings and auth drops
   const [supabase] = useState(() => createBrowserClient(
@@ -74,22 +75,26 @@ export default function LeaderboardPage() {
     setLiveActivities(latestLogs || []);
 
     // Fetch Latest Bonus Points
-    const { data: latestBonus } = await supabase
+    const { data: latestBonus, error: bonusError } = await supabase
       .from('bonus_points')
       .select(`
         id,
         points,
         title,
-        created_at,
-        users (
+        given_at,
+        users:users!user_id (
           full_name,
           avatar_url,
           department,
           streak_count
         )
       `)
-      .order('created_at', { ascending: false })
+      .order('given_at', { ascending: false })
       .limit(10);
+
+    if (bonusError) {
+      console.error("Error fetching latest bonus points:", bonusError.message);
+    }
     setBonusEvents(latestBonus || []);
 
     // Check if current user logged today and if they have any unlogged past/present days
@@ -138,6 +143,9 @@ export default function LeaderboardPage() {
     return supabase
       .channel('public:leaderboard-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
+        fetchData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_logs' }, () => {
         fetchData();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bonus_points' }, () => {
@@ -223,12 +231,17 @@ export default function LeaderboardPage() {
     liveActivities.forEach((act) => {
       const u = act.users;
       if (!u) return;
+
+      const isBonusLog = act.chanting_rounds === null && act.reading_minutes === null;
+      
       events.push({
         id: `log-${act.id}`,
         user: u,
-        type: 'log',
+        type: isBonusLog ? 'bonus' : 'log',
         title: u.full_name,
-        message: `completed daily Sadhana: chanted ${act.chanting_rounds} rounds and read for ${act.reading_minutes} mins!`,
+        message: isBonusLog 
+          ? `was awarded bonus points by the Admin! 🌟`
+          : `completed daily Sadhana: chanted ${act.chanting_rounds} rounds and read for ${act.reading_minutes} mins!`,
         detail: `+${act.points_earned} Points`,
         timestamp: new Date(act.submitted_at || act.log_date).getTime(),
         timeLabel: formatRelativeTime(act.submitted_at)
@@ -269,16 +282,27 @@ export default function LeaderboardPage() {
     bonusEvents.forEach((b) => {
       const u = b.users;
       if (!u) return;
-      events.push({
-        id: `bonus-${b.id}`,
-        user: u,
-        type: 'bonus',
-        title: u.full_name,
-        message: `was awarded bonus points by the Admin: "${b.title || 'Exceptional Devotion'}" 🌟`,
-        detail: `+${b.points} Points`,
-        timestamp: new Date(b.created_at).getTime(),
-        timeLabel: formatRelativeTime(b.created_at)
-      });
+
+      // To prevent duplicate admin bonus event (since we also fetch it from activity_logs),
+      // we check if a log event for the same user and point value already exists
+      const isDuplicate = events.some(e => 
+        e.user.full_name === u.full_name && 
+        e.type === 'bonus' && 
+        Math.abs(e.timestamp - new Date(b.given_at).getTime()) < 10000 // within 10 seconds
+      );
+
+      if (!isDuplicate) {
+        events.push({
+          id: `bonus-${b.id}`,
+          user: u,
+          type: 'bonus',
+          title: u.full_name,
+          message: `was awarded bonus points by the Admin: "${b.title || 'Exceptional Devotion'}" 🌟`,
+          detail: `+${b.points} Points`,
+          timestamp: new Date(b.given_at).getTime(),
+          timeLabel: formatRelativeTime(b.given_at)
+        });
+      }
     });
 
     // Sort combined events descending by timestamp
@@ -289,17 +313,32 @@ export default function LeaderboardPage() {
     <div className="p-4 md:p-8 max-w-6xl mx-auto min-h-screen bg-slate-50/30">
       {/* Header and Stats Block */}
       <div className="bg-white rounded-3xl p-5 md:p-6 border border-slate-100 shadow-sm mb-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight mb-2">
-            {settings.challenge_title || 'Sadhana Challenge'}
-          </h1>
-          <div className="flex items-center gap-3">
-            <span className="px-3 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-full text-xs font-bold tracking-wide">
-              Day {currentChallengeDay} of {totalChallengeDays}
-            </span>
-            <span className="text-xs font-semibold text-slate-400">
-              Ends: {formatLocalDate(settings.challenge_end_date)}
-            </span>
+        <div className="flex items-center gap-4 flex-1 min-w-0">
+          {settings.challenge_image_url && (
+            <img 
+              src={settings.challenge_image_url} 
+              alt="Campaign" 
+              className="w-16 h-16 rounded-full object-cover border-2 border-indigo-100 shadow-sm flex-shrink-0" 
+            />
+          )}
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight mb-2 break-words whitespace-normal">
+              {settings.challenge_title || 'Sadhana Challenge'}
+            </h1>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="px-3 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-full text-xs font-bold tracking-wide">
+                Day {currentChallengeDay} of {totalChallengeDays}
+              </span>
+              <span className="text-xs font-semibold text-slate-400">
+                Ends: {formatLocalDate(settings.challenge_end_date)}
+              </span>
+              <button
+                onClick={() => setIsRulesOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 hover:bg-amber-100/70 border border-amber-100 text-amber-700 rounded-full text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95"
+              >
+                📜 Rules & Score Math
+              </button>
+            </div>
           </div>
         </div>
 
@@ -564,6 +603,137 @@ export default function LeaderboardPage() {
             userId={selectedUserId}
             onClose={() => setSelectedUserId(null)}
           />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isRulesOpen && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsRulesOpen(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="relative w-full max-w-lg bg-white rounded-[2.5rem] p-6 md:p-8 border border-slate-100 shadow-2xl z-10 overflow-hidden text-left"
+            >
+              {/* Header Decorative Corner Orbs */}
+              <div className="absolute -top-12 -left-12 w-32 h-32 bg-amber-400/10 rounded-full blur-2xl" />
+              <div className="absolute -bottom-12 -right-12 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl" />
+
+              <div className="flex items-center justify-between mb-6 relative z-10">
+                <h2 className="text-xl md:text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
+                  <span className="text-2xl">📜</span> Campaign Rules & Score Math
+                </h2>
+                <button
+                  onClick={() => setIsRulesOpen(false)}
+                  className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center font-black text-slate-400 hover:text-slate-600 transition-colors border border-slate-100 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1 relative z-10 scrollbar-thin">
+                {/* Daily Goals & Math formulas */}
+                <div className="bg-gradient-to-br from-indigo-50/50 to-indigo-100/10 p-4 rounded-2xl border border-indigo-100/50">
+                  <h3 className="text-xs font-black text-indigo-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    🧮 Daily Score Calculations
+                  </h3>
+                  <ul className="space-y-2 text-xs text-slate-600 font-bold leading-relaxed">
+                    <li className="flex items-start gap-2">
+                      <span className="text-orange-500 font-black mt-0.5">•</span>
+                      <span>
+                        <strong className="text-slate-700">Chanting Score:</strong> (Daily Rounds Completed ÷ Your Custom Goal) × 10.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-teal-500 font-black mt-0.5">•</span>
+                      <span>
+                        <strong className="text-slate-700">Book Reading Score:</strong> (Daily Minutes Read ÷ Your Custom Goal) × 10.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-indigo-500 font-black mt-0.5">•</span>
+                      <span>
+                        <strong className="text-slate-700">Admin Bonuses:</strong> Awarded manually when you submit reports to your admin on WhatsApp (e.g., wake early, online session presence).
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-violet-500 font-black mt-0.5">•</span>
+                      <span>
+                        <strong className="text-slate-700">Quizzes (Upcoming):</strong> Engaging quizzes will also award additional points accordingly, which will be available right after the feature goes live!
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* The Game Changer: Streak Bonus */}
+                <div className="bg-gradient-to-br from-orange-50/50 to-orange-100/10 p-4 rounded-2xl border border-orange-100/50">
+                  <h3 className="text-xs font-black text-orange-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    ⚡ The Streak Bonus (Game Changer!)
+                  </h3>
+                  <p className="text-xs text-slate-600 font-bold leading-relaxed mb-2">
+                    Streaks are the ultimate multiplier in this campaign:
+                  </p>
+                  <ul className="space-y-2 text-xs text-slate-600 font-bold leading-relaxed">
+                    <li className="flex items-start gap-2">
+                      <span className="text-amber-500">🔥</span>
+                      <span>
+                        <strong className="text-slate-700">Strict Maintenance:</strong> A streak is maintained <strong className="text-slate-800 underline">only</strong> when you completely finish your daily goal. Otherwise, the streak breaks.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-rose-500">🔒</span>
+                      <span>
+                        <strong className="text-slate-700">Locked Commitments:</strong> Once your daily commitment is set, <strong className="text-slate-800 underline">you cannot decrease it</strong>!
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-indigo-500">📈</span>
+                      <span>
+                        <strong className="text-slate-700">Multiplier Math:</strong> Your daily score receives a multiplier bonus of <strong className="text-indigo-600 font-extrabold">10% per active streak day</strong> (e.g., a 3-day streak adds a <strong className="text-indigo-600 font-extrabold">30% bonus</strong> to that day's score!).
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Additional Sections */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-amber-50/30 border border-amber-100/50 p-3 rounded-2xl">
+                    <h4 className="text-[10px] font-black text-amber-700 uppercase tracking-wider mb-1 flex items-center gap-1">
+                      🛡️ Streak Shield
+                    </h4>
+                    <p className="text-[9px] text-slate-500 font-bold leading-snug">
+                      Missed a day? A Shield preserves your streak and keeps your flame burning! Use it wisely if a day is missed out.
+                    </p>
+                  </div>
+                  <div className="bg-emerald-50/30 border border-emerald-100/50 p-3 rounded-2xl">
+                    <h4 className="text-[10px] font-black text-emerald-700 uppercase tracking-wider mb-1 flex items-center gap-1">
+                      🏆 Awards
+                    </h4>
+                    <p className="text-[9px] text-slate-500 font-bold leading-snug">
+                      Milestones and automated badges achieved on your path. Check them out under the Awards tab!
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end relative z-10">
+                <button
+                  onClick={() => setIsRulesOpen(false)}
+                  className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow-md shadow-indigo-100 transition-all cursor-pointer"
+                >
+                  Got It!
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

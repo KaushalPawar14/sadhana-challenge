@@ -41,7 +41,7 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
   // Generate list of unfulfilled dates (past/present only, not already logged)
   const unfulfilledDates = React.useMemo(() => {
     if (!appSettings?.challenge_start_date) return [];
-    
+
     const dates: { value: string; label: string }[] = [];
     const [sYear, sMonth, sDay] = appSettings.challenge_start_date.split('-').map(Number);
     const start = new Date(sYear, sMonth - 1, sDay);
@@ -49,7 +49,7 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     // Scan from start date to today
     let current = new Date(start);
     while (current <= today) {
@@ -57,21 +57,21 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
       const mStr = String(current.getMonth() + 1).padStart(2, '0');
       const dStr = String(current.getDate()).padStart(2, '0');
       const dateStr = `${yStr}-${mStr}-${dStr}`;
-      
+
       if (!alreadyLoggedDates.includes(dateStr)) {
         dates.push({
           value: dateStr,
-          label: current.toLocaleDateString('en-US', { 
-            weekday: 'short', 
-            month: 'short', 
-            day: 'numeric', 
-            year: 'numeric' 
+          label: current.toLocaleDateString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
           })
         });
       }
       current.setDate(current.getDate() + 1);
     }
-    
+
     // Sort descending so most recent unlogged date is at the top
     return dates.reverse();
   }, [appSettings, alreadyLoggedDates]);
@@ -114,7 +114,7 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
         .from('activity_logs')
         .select('log_date')
         .eq('user_id', user?.id);
-      
+
       const loggedDates = existingLogs?.map(l => l.log_date) || [];
       setAlreadyLoggedDates(loggedDates);
 
@@ -202,14 +202,33 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
 
       setPointsResult(result);
 
-      // 3. Save to DB (Now securely reads your user cookie token)
-      const { error: logError } = await supabase.from('activity_logs').upsert({
-        user_id: user.id,
-        log_date: logDate,
-        ...formData,
-        points_earned: result.total_points,
-        is_late_submission: diffDays > 0
-      });
+      // 3. Save to DB (Uses safe insert/update routing to perfectly respect RLS policies and constraints)
+      const logExists = alreadyLoggedDates.includes(logDate);
+      let logError;
+
+      if (logExists) {
+        const { error } = await supabase
+          .from('activity_logs')
+          .update({
+            ...formData,
+            points_earned: result.total_points,
+            is_late_submission: diffDays > 0
+          })
+          .eq('user_id', user.id)
+          .eq('log_date', logDate);
+        logError = error;
+      } else {
+        const { error } = await supabase
+          .from('activity_logs')
+          .insert({
+            user_id: user.id,
+            log_date: logDate,
+            ...formData,
+            points_earned: result.total_points,
+            is_late_submission: diffDays > 0
+          });
+        logError = error;
+      }
 
       if (logError) throw logError;
 
@@ -306,70 +325,70 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-2">Log Date</label>
-                {unfulfilledDates.length > 0 ? (
-                  <div className="relative">
-                    <select
-                      value={logDate}
-                      onChange={(e) => setLogDate(e.target.value)}
-                      className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-indigo-500 focus:bg-white outline-none font-bold text-slate-700 cursor-pointer appearance-none pr-10 transition-all"
-                    >
-                      {unfulfilledDates.map((d) => (
-                        <option key={d.value} value={d.value} className="font-bold">
-                          {d.label} {d.value === new Date().toISOString().split('T')[0] ? ' (Today) 🎯' : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-indigo-500 font-bold">
-                      ▼
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-6 bg-emerald-50 border-2 border-emerald-100 text-emerald-700 rounded-3xl text-center font-bold">
-                    <p className="text-sm mb-1">🎉 All Days Logged!</p>
-                    <p className="text-[10px] uppercase tracking-wider opacity-85">You have successfully logged all available days of this challenge.</p>
-                  </div>
-                )}
-              </div>
-
-              {unfulfilledDates.length > 0 && (
-                <>
-                  {[
-                    { label: 'Chanting Rounds', name: 'chanting_rounds', target: userProfile?.target_chanting, icon: '📿' },
-                    { label: 'Reading Minutes', name: 'reading_minutes', target: userProfile?.target_reading, icon: '📖' },
-                  ].map((field) => (
-                    <div key={field.name}>
-                      <div className="flex justify-between items-end mb-2">
-                        <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                          <span>{field.icon}</span> {field.label}
-                        </label>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Goal: {field.target}</span>
+                  {unfulfilledDates.length > 0 ? (
+                    <div className="relative">
+                      <select
+                        value={logDate}
+                        onChange={(e) => setLogDate(e.target.value)}
+                        className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-indigo-500 focus:bg-white outline-none font-bold text-slate-700 cursor-pointer appearance-none pr-10 transition-all"
+                      >
+                        {unfulfilledDates.map((d) => (
+                          <option key={d.value} value={d.value} className="font-bold">
+                            {d.label} {d.value === new Date().toISOString().split('T')[0] ? ' (Today) 🎯' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-indigo-500 font-bold">
+                        ▼
                       </div>
-                      <input
-                        type="number"
-                        name={field.name}
-                        value={(formData as any)[field.name]}
-                        onChange={handleInputChange}
-                        className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-indigo-500 outline-none font-bold text-lg text-slate-800"
-                      />
                     </div>
-                  ))}
+                  ) : (
+                    <div className="p-6 bg-emerald-50 border-2 border-emerald-100 text-emerald-700 rounded-3xl text-center font-bold">
+                      <p className="text-sm mb-1">🎉 All Days Logged!</p>
+                      <p className="text-[10px] uppercase tracking-wider opacity-85">You have successfully logged all available days of this challenge.</p>
+                    </div>
+                  )}
+                </div>
 
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full bg-indigo-600 text-white py-5 rounded-[1.5rem] font-black text-lg hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 flex items-center justify-center gap-3 mt-4 disabled:opacity-50"
-                  >
-                    {isLoading ? 'Saving...' : (
-                      <>Submit Daily Log <ChevronRight size={20} /></>
-                    )}
-                  </button>
+                {unfulfilledDates.length > 0 && (
+                  <>
+                    {[
+                      { label: 'Chanting Rounds of yesterday', name: 'chanting_rounds', target: userProfile?.target_chanting, icon: '📿' },
+                      { label: 'Reading Minutes of yesterday', name: 'reading_minutes', target: userProfile?.target_reading, icon: '📖' },
+                    ].map((field) => (
+                      <div key={field.name}>
+                        <div className="flex justify-between items-end mb-2">
+                          <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                            <span>{field.icon}</span> {field.label}
+                          </label>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Goal: {field.target}</span>
+                        </div>
+                        <input
+                          type="number"
+                          name={field.name}
+                          value={(formData as any)[field.name]}
+                          onChange={handleInputChange}
+                          className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-indigo-500 outline-none font-bold text-lg text-slate-800"
+                        />
+                      </div>
+                    ))}
 
-                  <p className="text-center text-[10px] text-slate-400 font-medium uppercase tracking-widest">
-                    Bonus points are awarded by the admin!
-                  </p>
-                </>
-              )}
-            </form>
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      className="w-full bg-indigo-600 text-white py-5 rounded-[1.5rem] font-black text-lg hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 flex items-center justify-center gap-3 mt-4 disabled:opacity-50"
+                    >
+                      {isLoading ? 'Saving...' : (
+                        <>Submit Daily Log <ChevronRight size={20} /></>
+                      )}
+                    </button>
+
+                    <p className="text-center text-[10px] text-slate-400 font-medium uppercase tracking-widest">
+                      Bonus points are awarded by the admin!
+                    </p>
+                  </>
+                )}
+              </form>
             )}
           </div>
         ) : (

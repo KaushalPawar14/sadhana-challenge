@@ -3,8 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabaseClient';
-import { 
-  Search, Edit3, Trash2, Award, Plus, 
+import {
+  Search, Edit3, Trash2, Award, Plus,
   Download, History, X, Save, AlertTriangle
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
@@ -30,8 +30,8 @@ export default function AdminUsers() {
     setIsLoading(false);
   };
 
-  const filteredUsers = users.filter(u => 
-    u.full_name?.toLowerCase().includes(search.toLowerCase()) || 
+  const filteredUsers = users.filter(u =>
+    u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
     u.department?.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -50,7 +50,9 @@ export default function AdminUsers() {
     const formData = new FormData(e.target);
     const points = parseInt(formData.get('points') as string);
     const title = formData.get('title') as string;
+    const today = new Date().toISOString().split('T')[0];
 
+    // 1. Insert the bonus point record
     const { error: bonusError } = await supabase.from('bonus_points').insert({
       user_id: selectedUser.id,
       points,
@@ -58,31 +60,46 @@ export default function AdminUsers() {
     });
 
     if (bonusError) {
-      toast.error("Failed to give bonus");
+      toast.error("Failed to record bonus entry");
       return;
     }
 
-    // Fetch the freshest user data to get the absolute most current total_points directly from DB
-    const { data: freshUser, error: freshError } = await supabase
+    // 2. Use UPSERT for activity_logs to avoid ID conflicts or Date conflicts
+    // Note: We omit 'id' and let Supabase generate it if it's a new row
+    const { error: logError } = await supabase.from('activity_logs').upsert({
+      user_id: selectedUser.id,
+      log_date: today,
+      points_earned: (selectedUser.total_points || 0) + points,
+      is_late_submission: false
+    }, {
+      onConflict: 'user_id,log_date'
+    });
+
+    if (logError) {
+      console.error("Activity log error:", logError);
+      toast.error("Bonus recorded, but activity log failed to sync.");
+      // We continue anyway to update the main user total
+    }
+
+    // 3. Update the User's total_points
+    // We fetch fresh data to prevent "race conditions" (two admins updating at once)
+    const { data: freshUser } = await supabase
       .from('users')
       .select('total_points')
       .eq('id', selectedUser.id)
       .single();
 
-    if (freshError || !freshUser) {
-      toast.error("Failed to retrieve current user points");
-      return;
-    }
+    const newTotal = (freshUser?.total_points || 0) + points;
 
-    const currentTotalPoints = freshUser.total_points || 0;
+    const { error: userError } = await supabase
+      .from('users')
+      .update({ total_points: newTotal })
+      .eq('id', selectedUser.id);
 
-    const { error: userError } = await supabase.from('users').update({
-      total_points: currentTotalPoints + points
-    }).eq('id', selectedUser.id);
-
-    if (userError) toast.error("Failed to update user points");
-    else {
-      toast.success("Bonus points awarded!");
+    if (userError) {
+      toast.error("Failed to update user total points");
+    } else {
+      toast.success(`Awarded ${points} points for ${title}!`);
       setModalType(null);
       fetchUsers();
     }
@@ -128,7 +145,7 @@ export default function AdminUsers() {
           <p className="text-slate-500 font-bold">Monitor and manage all participating students</p>
         </div>
         <div className="flex gap-3">
-          <button 
+          <button
             onClick={exportToCSV}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold text-sm hover:bg-slate-50 transition-all shadow-sm"
           >
@@ -141,8 +158,8 @@ export default function AdminUsers() {
       <div className="flex gap-4">
         <div className="flex-1 relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-          <input 
-            type="text" 
+          <input
+            type="text"
             placeholder="Search by name or department..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -205,25 +222,25 @@ export default function AdminUsers() {
                   </td>
                   <td className="p-6 text-right">
                     <div className="flex justify-end gap-2">
-                      <button 
+                      <button
                         onClick={() => { setSelectedUser(u); setModalType('bonus'); }}
                         className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Give Bonus"
                       >
                         <Plus size={18} />
                       </button>
-                      <button 
+                      <button
                         onClick={() => { setSelectedUser(u); setModalType('award'); }}
                         className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-all" title="Grant Award"
                       >
                         <Award size={18} />
                       </button>
-                      <button 
+                      <button
                         onClick={() => { setSelectedUser(u); setModalType('history'); }}
                         className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-all" title="View History"
                       >
                         <History size={18} />
                       </button>
-                      <button 
+                      <button
                         onClick={() => handleDelete(u.id)}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all" title="Delete"
                       >
@@ -242,12 +259,12 @@ export default function AdminUsers() {
       <AnimatePresence>
         {modalType && selectedUser && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setModalType(null)}
               className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
             />
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
               className="relative w-full max-w-md bg-white rounded-[2.5rem] p-8 shadow-2xl"
             >
@@ -280,7 +297,7 @@ export default function AdminUsers() {
                       <option value="mahayogi_crown">Mahayogi Crown</option>
                       <option value="unbroken_flame">Unbroken Flame</option>
                       <option value="jijnasu_scholar">Jijnasu Scholar</option>
-                      <option value="brahma_muhurta">Brahma Muhurta</option>
+                      <option value="brahma_muhurta">Active Entity</option>
                       <option value="rising_sadhaka">Rising Sadhaka</option>
                     </select>
                   </div>

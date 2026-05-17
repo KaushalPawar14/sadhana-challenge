@@ -103,10 +103,10 @@ export default function ProfilePage() {
     if (!profile) return { chanting: 0, reading: 0 };
     return logs.reduce((acc, log) => {
       const chantingPts = profile.target_chanting > 0 
-        ? (log.chanting_rounds / profile.target_chanting) * 8 
+        ? (log.chanting_rounds / profile.target_chanting) * 10 
         : 0;
       const readingPts = profile.target_reading > 0 
-        ? (log.reading_minutes / profile.target_reading) * 30 
+        ? (log.reading_minutes / profile.target_reading) * 10 
         : 0;
 
       acc.chanting += chantingPts;
@@ -162,15 +162,15 @@ export default function ProfilePage() {
       const log = logs.find(l => l.log_date === dStr);
 
       const chantingPts = log && profile?.target_chanting > 0
-        ? (log.chanting_rounds / profile.target_chanting) * 8
+        ? (log.chanting_rounds / profile.target_chanting) * 10
         : 0;
       const readingPts = log && profile?.target_reading > 0
-        ? (log.reading_minutes / profile.target_reading) * 30
+        ? (log.reading_minutes / profile.target_reading) * 10
         : 0;
 
       // Find bonuses for this day
       const dayBonuses = bonusPointsList.filter((b: any) => {
-        const bDate = new Date(b.created_at);
+        const bDate = new Date(b.given_at);
         const y = bDate.getFullYear();
         const m = String(bDate.getMonth() + 1).padStart(2, '0');
         const dayStr = String(bDate.getDate()).padStart(2, '0');
@@ -418,6 +418,8 @@ export default function ProfilePage() {
                     if (active && payload && payload.length) {
                       const chantingVal = payload.find((p: any) => p.dataKey === 'Chanting')?.value || 0;
                       const readingVal = payload.find((p: any) => p.dataKey === 'Reading')?.value || 0;
+                      const bonusVal = payload.find((p: any) => p.dataKey === 'Bonus')?.value || 0;
+                      const reasonVal = payload[0]?.payload?.['Bonus Reason'];
 
                       return (
                         <div className="bg-white/95 backdrop-blur-sm p-4 rounded-2xl shadow-xl border border-slate-100/80 text-left min-w-[150px] z-50">
@@ -434,6 +436,19 @@ export default function ProfilePage() {
                               Reading: {readingVal} pts
                             </p>
                           )}
+                          {Number(bonusVal) > 0 && (
+                            <div className="mt-1 pt-1 border-t border-slate-100">
+                              <p className="text-[11px] font-bold text-indigo-600 flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block" />
+                                Bonus: {bonusVal} pts
+                              </p>
+                              {reasonVal && (
+                                <p className="text-[9px] text-slate-400 font-semibold leading-normal ml-3.5 italic">
+                                  {reasonVal}
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     }
@@ -442,7 +457,8 @@ export default function ProfilePage() {
                 />
                 <Legend iconType="circle" />
                 <Bar dataKey="Chanting" stackId="a" fill="#f97316" />
-                <Bar dataKey="Reading" stackId="a" fill="#14b8a6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Reading" stackId="a" fill="#14b8a6" />
+                <Bar dataKey="Bonus" stackId="a" fill="#6366f1" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

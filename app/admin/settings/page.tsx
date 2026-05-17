@@ -8,6 +8,8 @@ import { toast } from 'react-hot-toast';
 export default function AdminSettings() {
   const [settings, setSettings] = useState<any>({});
   const [admins, setAdmins] = useState<any[]>([]);
+  const [challengeImageUrl, setChallengeImageUrl] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -22,12 +24,57 @@ export default function AdminSettings() {
       return acc;
     }, {});
     setSettings(settingsMap || {});
+    setChallengeImageUrl(settingsMap?.challenge_image_url || '');
     setIsLoading(false);
   };
 
   const fetchAdmins = async () => {
     const { data } = await supabase.from('admin_emails').select('*');
     setAdmins(data || []);
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `campaign-${Date.now()}.${fileExt}`;
+      
+      // Try uploading to 'avatars'
+      const { data, error } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, file);
+
+      if (error) {
+        // Fallback to 'public' bucket
+        const { data: fbData, error: fbError } = await supabase.storage
+          .from('public')
+          .upload(fileName, file);
+
+        if (fbError) throw fbError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('public')
+          .getPublicUrl(fileName);
+
+        setChallengeImageUrl(publicUrl);
+        toast.success("Image uploaded successfully! 📸");
+      } else {
+        const { data: { publicUrl } } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(fileName);
+
+        setChallengeImageUrl(publicUrl);
+        toast.success("Image uploaded successfully! 📸");
+      }
+    } catch (err: any) {
+      console.error("Upload failure:", err.message);
+      toast.error("Upload failed. You can still paste any direct image link! 🔗");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleUpdateSetting = async (e: any) => {
@@ -113,6 +160,38 @@ export default function AdminSettings() {
               <div>
                 <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">End Date</label>
                 <input name="challenge_end_date" type="date" defaultValue={settings.challenge_end_date} className="w-full p-4 rounded-xl bg-slate-50 border-none outline-none font-bold" required />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Campaign Cover Photo (URL)</label>
+                <div className="flex gap-3 items-center">
+                  <input 
+                    name="challenge_image_url" 
+                    type="url"
+                    placeholder="https://example.com/image.jpg"
+                    value={challengeImageUrl}
+                    onChange={(e) => setChallengeImageUrl(e.target.value)}
+                    className="flex-1 p-4 rounded-xl bg-slate-50 border-none outline-none font-bold text-sm" 
+                  />
+                  <input 
+                    type="file" 
+                    id="campaign-image-upload" 
+                    accept="image/*" 
+                    onChange={handleImageUpload}
+                    className="hidden" 
+                  />
+                  <label 
+                    htmlFor="campaign-image-upload" 
+                    className="px-5 py-4 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl font-black cursor-pointer whitespace-nowrap transition-all shadow-sm text-xs uppercase tracking-widest"
+                  >
+                    {isUploading ? 'Uploading...' : 'Upload File'}
+                  </label>
+                </div>
+                {challengeImageUrl && (
+                  <div className="mt-4 flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                    <img src={challengeImageUrl} alt="Preview" className="w-12 h-12 rounded-full object-cover border-2 border-indigo-100 shadow-sm flex-shrink-0" />
+                    <span className="text-xs font-bold text-slate-500 truncate flex-1">{challengeImageUrl}</span>
+                  </div>
+                )}
               </div>
             </div>
 

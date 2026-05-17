@@ -4,9 +4,9 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuthStore } from '@/store/authStore';
-import { 
-  MahayogiCrown, UnbrokenFlame, JijnasuScholar, 
-  BrahmaMuhurta, RisingSadhaka, FloatingLotus 
+import {
+  MahayogiCrown, UnbrokenFlame, JijnasuScholar,
+  BrahmaMuhurta, RisingSadhaka, FloatingLotus
 } from '@/components/student/AwardIcons';
 import { Award, Calendar, Sparkles } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -28,7 +28,7 @@ const STANDARD_AWARDS = [
   },
   {
     key: 'brahma_muhurta',
-    name: 'Brahma Muhurta',
+    name: 'Active Entity',
     icon: BrahmaMuhurta,
     color: 'amber',
     defaultMessage: 'Bestowed upon the user who earns the highest cumulative bonus points awarded by the admin!'
@@ -88,13 +88,13 @@ export default function AwardsPage() {
         .from('awards')
         .select('*')
         .eq('user_id', user?.id);
-      
+
       const explicitlyGranted = dbAwards || [];
 
       // 2. Fetch ranking aggregates securely through server-side API (bypasses client RLS restrictions)
       const res = await fetch('/api/awards-stats');
       const stats = res.ok ? await res.json() : { usersList: [], bonusList: [], logsList: [] };
-      
+
       const usersList = (stats.usersList || []) as any[];
       const bonusList = (stats.bonusList || []) as any[];
       const logsList = (stats.logsList || []) as any[];
@@ -103,7 +103,7 @@ export default function AwardsPage() {
       const { data: appSettings } = await supabase
         .from('app_settings')
         .select('*');
-      
+
       const settingsMap = appSettings?.reduce((acc: any, curr: any) => {
         acc[curr.key] = curr.value;
         return acc;
@@ -114,12 +114,12 @@ export default function AwardsPage() {
       const [eYear, eMonth, eDay] = endDateStr.split('-').map(Number);
       const endDate = new Date(eYear, eMonth - 1, eDay);
       endDate.setHours(23, 59, 59, 999);
-      
+
       const now = new Date();
       const hasEnded = now > endDate;
 
       // 7. Perform calculations for the 4 automatic awards
-      
+
       // -- Rising Sadhaka (Highest total points)
       let maxPoints = 0;
       usersList.forEach(u => {
@@ -180,7 +180,7 @@ export default function AwardsPage() {
         },
         {
           key: 'brahma_muhurta',
-          name: 'Brahma Muhurta',
+          name: 'Active Entity',
           icon: BrahmaMuhurta,
           color: 'amber',
           isEligible: brahmaWinners.includes(user?.id || ''),
@@ -217,7 +217,7 @@ export default function AwardsPage() {
         const calc = calculatedAwards.find(c => c.key === standard.key)!;
         const dbRecord = explicitlyGranted.find(a => a.award_key === standard.key);
         const unlocked = !!dbRecord || (hasEnded && calc.isEligible);
-        
+
         return {
           ...standard,
           ...calc,
@@ -231,7 +231,7 @@ export default function AwardsPage() {
       });
 
       setAwardListState(mappedList);
-      
+
       // Trigger celebration if user has unlocked any awards
       const hasAnyUnlocked = mappedList.some(a => a.isUnlocked);
       if (hasAnyUnlocked) {
@@ -275,6 +275,44 @@ export default function AwardsPage() {
     }
   };
 
+  const colorClasses: Record<string, { border: string; bg: string; text: string; shadow: string; badge: string }> = {
+    emerald: {
+      border: 'border-emerald-100',
+      bg: 'bg-emerald-50/50',
+      text: 'text-emerald-600',
+      shadow: 'shadow-emerald-100/50',
+      badge: 'bg-emerald-50 text-emerald-600'
+    },
+    orange: {
+      border: 'border-orange-100',
+      bg: 'bg-orange-50/50',
+      text: 'text-orange-600',
+      shadow: 'shadow-orange-100/50',
+      badge: 'bg-orange-50 text-orange-600'
+    },
+    amber: {
+      border: 'border-amber-100',
+      bg: 'bg-amber-50/50',
+      text: 'text-amber-600',
+      shadow: 'shadow-amber-100/50',
+      badge: 'bg-amber-50 text-amber-600'
+    },
+    indigo: {
+      border: 'border-indigo-100',
+      bg: 'bg-indigo-50/50',
+      text: 'text-indigo-600',
+      shadow: 'shadow-indigo-100/50',
+      badge: 'bg-indigo-50 text-indigo-600'
+    },
+    teal: {
+      border: 'border-teal-100',
+      bg: 'bg-teal-50/50',
+      text: 'text-teal-600',
+      shadow: 'shadow-teal-100/50',
+      badge: 'bg-teal-50 text-teal-600'
+    }
+  };
+
   if (isLoading) return <div className="p-20 text-center text-slate-400">Glimpsing into the hall of awards...</div>;
 
   return (
@@ -287,6 +325,7 @@ export default function AwardsPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         {awardListState.map((award, i) => {
           const Icon = award.icon;
+          const colorClass = colorClasses[award.color] || colorClasses.emerald;
           return (
             <motion.div
               key={award.key}
@@ -295,7 +334,7 @@ export default function AwardsPage() {
               transition={{ delay: i * 0.1 }}
               className={`
                 relative bg-white p-8 rounded-[2.5rem] border-2 transition-all overflow-hidden group
-                ${award.isUnlocked ? `border-${award.color}-100 shadow-xl shadow-${award.color}-50` : 'border-slate-100 opacity-90'}
+                ${award.isUnlocked ? `${colorClass.border} shadow-xl ${colorClass.shadow}` : 'border-slate-100 opacity-90'}
               `}
             >
               {/* Blur locking visual background for locked items */}
@@ -305,16 +344,15 @@ export default function AwardsPage() {
 
               {/* Absolute Award Rarity Label */}
               <div className="absolute top-6 right-6 flex items-center gap-1.5 z-10">
-                <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full ${
-                  award.isUnlocked 
-                    ? `bg-${award.color}-50 text-${award.color}-600` 
-                    : 'bg-slate-100 text-slate-400'
-                }`}>
+                <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full ${award.isUnlocked
+                  ? colorClass.badge
+                  : 'bg-slate-100 text-slate-400'
+                  }`}>
                   {award.key === 'jijnasu_scholar' ? 'Locked' : award.isUnlocked ? 'Unlocked' : 'Locked 🔒'}
                 </span>
               </div>
 
-              <div className={`w-24 h-24 mx-auto mb-6 relative z-10 transition-transform duration-300 group-hover:scale-105 ${award.isUnlocked ? 'grayscale-0' : 'grayscale opacity-45'}`}>
+              <div className="w-24 h-24 mx-auto mb-6 relative z-10 transition-transform duration-300 group-hover:scale-105">
                 <Icon />
               </div>
 
@@ -322,7 +360,7 @@ export default function AwardsPage() {
                 <h3 className={`text-xl font-black mb-2 ${award.isUnlocked ? 'text-slate-800' : 'text-slate-400'}`}>
                   {award.name}
                 </h3>
-                
+
                 <p className="text-xs text-slate-500 leading-relaxed mb-6 px-2">
                   {award.defaultMessage}
                 </p>
@@ -371,9 +409,9 @@ export default function AwardsPage() {
                   </div>
                 )}
               </div>
-              
+
               {award.isUnlocked && (
-                <motion.div 
+                <motion.div
                   className={`absolute -top-2 -right-2 w-10 h-10 bg-white shadow-lg border border-${award.color}-100 rounded-full flex items-center justify-center text-indigo-600 z-20`}
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}

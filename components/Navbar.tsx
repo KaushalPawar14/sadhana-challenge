@@ -4,17 +4,44 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
-import { LogOut, Trophy, User, Award, LayoutDashboard, Sparkles } from 'lucide-react';
+import { LogOut, Trophy, User, Award, LayoutDashboard, Sparkles, Radio } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { toast } from 'react-hot-toast';
 
 export const Navbar = () => {
   const pathname = usePathname();
   const { isAdmin, signOut, user } = useAuthStore();
 
+  const showUpcomingNotice = () => {
+    toast.custom((t) => (
+      <div
+        className={`${
+          t.visible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
+        } max-w-sm w-full bg-white shadow-2xl rounded-[2rem] pointer-events-auto flex p-6 border border-slate-100 relative overflow-hidden transition-all duration-300 ease-out text-left`}
+      >
+        {/* Glow decoration */}
+        <div className="absolute -top-10 -right-10 w-24 h-24 bg-indigo-500/10 rounded-full blur-xl" />
+
+        <div className="flex-1 flex gap-4 items-start">
+          <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 flex-shrink-0 border border-indigo-100/30">
+            <Radio size={24} className="animate-pulse" />
+          </div>
+          <div>
+            <p className="text-sm font-black text-slate-800 tracking-tight">Podcast & Quizzes</p>
+            <p className="text-xs font-bold text-slate-500 mt-1 leading-relaxed">
+              This segment is currently in production and will be updated soon. Stay tuned for expert audio podcasts and engaging spiritual quizzes!
+            </p>
+          </div>
+        </div>
+      </div>
+    ), { duration: 4000, position: 'bottom-right' });
+  };
+
   const navItems = [
     { name: 'Leaderboard', href: '/leaderboard', icon: Trophy },
     { name: 'Profile', href: '/profile', icon: User },
     { name: 'Awards', href: '/awards', icon: Award },
+    { name: 'Podcast and Quizzes', href: '#upcoming', icon: Radio, isUpcoming: true },
   ];
 
   if (isAdmin) {
@@ -32,9 +59,15 @@ export const Navbar = () => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
           return (
-            <Link 
-              key={item.href} 
+            <Link
+              key={item.href}
               href={item.href}
+              onClick={(e) => {
+                if (item.isUpcoming) {
+                  e.preventDefault();
+                  showUpcomingNotice();
+                }
+              }}
               className={`flex flex-col items-center gap-1 transition-all ${
                 isActive ? 'text-indigo-600 scale-110' : 'text-slate-500'
               }`}
@@ -60,19 +93,25 @@ export const Navbar = () => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
             return (
-              <Link 
-                key={item.href} 
+              <Link
+                key={item.href}
                 href={item.href}
+                onClick={(e) => {
+                  if (item.isUpcoming) {
+                    e.preventDefault();
+                    showUpcomingNotice();
+                  }
+                }}
                 className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${
-                  isActive 
-                    ? 'bg-indigo-50 text-indigo-600 font-bold shadow-sm' 
+                  isActive
+                    ? 'bg-indigo-50 text-indigo-600 font-bold shadow-sm'
                     : 'text-slate-500 hover:bg-slate-50 hover:text-indigo-500'
                 }`}
               >
                 <Icon size={20} />
                 <span>{item.name}</span>
                 {isActive && (
-                  <motion.div 
+                  <motion.div
                     layoutId="activeTab"
                     className="ml-auto w-1.5 h-1.5 bg-indigo-600 rounded-full"
                   />
@@ -93,7 +132,7 @@ export const Navbar = () => {
                 <p className="text-xs text-slate-500 truncate">{user.email}</p>
               </div>
             </div>
-            <button 
+            <button
               onClick={() => signOut()}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-500 hover:bg-red-50 hover:text-red-600 transition-all font-semibold"
             >
