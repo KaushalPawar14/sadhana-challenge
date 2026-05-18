@@ -64,22 +64,7 @@ export default function AdminUsers() {
       return;
     }
 
-    // 2. Use UPSERT for activity_logs to avoid ID conflicts or Date conflicts
-    // Note: We omit 'id' and let Supabase generate it if it's a new row
-    const { error: logError } = await supabase.from('activity_logs').upsert({
-      user_id: selectedUser.id,
-      log_date: today,
-      points_earned: (selectedUser.total_points || 0) + points,
-      is_late_submission: false
-    }, {
-      onConflict: 'user_id,log_date'
-    });
 
-    if (logError) {
-      console.error("Activity log error:", logError);
-      toast.error("Bonus recorded, but activity log failed to sync.");
-      // We continue anyway to update the main user total
-    }
 
     // 3. Update the User's total_points
     // We fetch fresh data to prevent "race conditions" (two admins updating at once)

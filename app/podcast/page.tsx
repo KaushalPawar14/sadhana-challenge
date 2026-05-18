@@ -40,8 +40,8 @@ interface UserProgress {
 export default function PodcastAndQuizzesPage() {
   const { user } = useAuthStore();
 
-  // COMPLETION THRESHOLD: Customize this value (e.g. 0.05 for 5%) for quick testing!
-  const COMPLETION_THRESHOLD = 0.80;
+  // Dynamically load completion threshold percentage from app_settings (default to 80%)
+  const [completionThreshold, setCompletionThreshold] = useState<number>(0.80);
 
   // Data State
   const [audiobooks, setAudiobooks] = useState<Audiobook[]>([]);
@@ -112,7 +112,7 @@ export default function PodcastAndQuizzesPage() {
             setListenedSecondsCount(uniqueSeconds.size);
 
             // Completion boundary is based on threshold constant
-            const targetSeconds = Math.floor(audio.duration * COMPLETION_THRESHOLD);
+            const targetSeconds = Math.floor(audio.duration * completionThreshold);
             if (uniqueSeconds.size >= targetSeconds && targetSeconds > 0) {
               triggerAudiobookCompletion(playingBook.id);
             }
@@ -135,12 +135,26 @@ export default function PodcastAndQuizzesPage() {
         audio.removeEventListener('timeupdate', onTimeUpdate);
       };
     }
-  }, [playingBook, userProgress, volume, isMuted, hasCompletedInSession]);
+  }, [playingBook, userProgress, volume, isMuted, hasCompletedInSession, completionThreshold]);
 
   // Fetch Audiobooks and User Progress combined
   const fetchAudiobooksAndProgress = async () => {
     setIsLoading(true);
     try {
+      // 0. Fetch dynamic podcast completion threshold setting
+      const { data: thresholdData } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'podcast_completion_threshold')
+        .maybeSingle();
+
+      if (thresholdData && thresholdData.value) {
+        const parsedVal = parseFloat(thresholdData.value);
+        if (!isNaN(parsedVal)) {
+          setCompletionThreshold(parsedVal / 100);
+        }
+      }
+
       // 1. Fetch audiobooks
       const { data: books, error: booksError } = await supabase
         .from('audiobooks')
@@ -849,11 +863,11 @@ export default function PodcastAndQuizzesPage() {
                       <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden">
                         <div
                           className="h-full bg-indigo-500 rounded-full transition-all duration-300"
-                          style={{ width: `${Math.min(100, Math.round((listenedSecondsCount / Math.max(1, Math.floor(duration * COMPLETION_THRESHOLD))) * 100))}%` }}
+                          style={{ width: `${Math.min(100, Math.round((listenedSecondsCount / Math.max(1, Math.floor(duration * completionThreshold))) * 100))}%` }}
                         />
                       </div>
                       <span className="text-[9px] font-black text-slate-300">
-                        {Math.min(100, Math.round((listenedSecondsCount / Math.max(1, Math.floor(duration * COMPLETION_THRESHOLD))) * 100))}%
+                        {Math.min(100, Math.round((listenedSecondsCount / Math.max(1, Math.floor(duration * completionThreshold))) * 100))}%
                       </span>
                     </div>
                   </div>

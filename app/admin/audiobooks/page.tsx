@@ -49,8 +49,14 @@ export default function AudiobooksCMS() {
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
   const [audioPreviewObj, setAudioPreviewObj] = useState<HTMLAudioElement | null>(null);
 
+  // Dynamic Podcast Completion Settings
+  const [completionThreshold, setCompletionThreshold] = useState<number>(80);
+  const [isEditingThreshold, setIsEditingThreshold] = useState(false);
+  const [tempThreshold, setTempThreshold] = useState<string>('80');
+
   useEffect(() => {
     fetchAudiobooks();
+    fetchThreshold();
     return () => {
       if (audioPreviewObj) {
         audioPreviewObj.pause();
@@ -159,6 +165,52 @@ export default function AudiobooksCMS() {
       toast.error("Failed to load audiobooks list");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchThreshold = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('app_settings')
+        .select('*')
+        .eq('key', 'podcast_completion_threshold')
+        .maybeSingle();
+
+      if (data && data.value) {
+        const val = parseFloat(data.value);
+        if (!isNaN(val)) {
+          setCompletionThreshold(val);
+          setTempThreshold(val.toString());
+        }
+      }
+    } catch (err) {
+      console.error("Error loading podcast completion threshold:", err);
+    }
+  };
+
+  const handleSaveThreshold = async () => {
+    const val = parseFloat(tempThreshold);
+    if (isNaN(val) || val < 1 || val > 100) {
+      toast.error("Please enter a valid percentage between 1 and 100.");
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert({
+          key: 'podcast_completion_threshold',
+          value: val.toString(),
+          updated_at: new Date().toISOString()
+        });
+
+      if (error) throw error;
+
+      setCompletionThreshold(val);
+      setIsEditingThreshold(false);
+      toast.success(`Podcast completion threshold set to ${val}%! 🎧✨`);
+    } catch (err: any) {
+      toast.error("Failed to update podcast completion threshold.");
     }
   };
 
@@ -296,12 +348,56 @@ export default function AudiobooksCMS() {
   return (
     <div className="space-y-12">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <h2 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
             <Volume2 size={32} className="text-indigo-600 animate-pulse" /> Audiobooks & Quizzes CMS
           </h2>
           <p className="text-slate-500 font-bold">Automate and deploy tiered audiobook courses and quiz challenges</p>
+        </div>
+
+        {/* Podcast Completion Threshold Settings Controller */}
+        <div className="bg-white px-6 py-4 rounded-3xl border border-slate-100 shadow-md flex items-center gap-4">
+          <div className="flex items-center gap-2.5">
+            <span className="text-xl">⏱️</span>
+            <div>
+              <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest leading-none mb-1">Unlock Quiz At</p>
+              <p className="text-sm font-black text-slate-800 leading-none">
+                {completionThreshold}% <span className="text-xs font-semibold text-slate-400">Heard</span>
+              </p>
+            </div>
+          </div>
+          {isEditingThreshold ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="1"
+                max="100"
+                value={tempThreshold}
+                onChange={(e) => setTempThreshold(e.target.value)}
+                className="w-16 p-2 rounded-xl bg-slate-50 font-black text-sm text-center outline-none border-2 border-indigo-200 focus:ring-0"
+              />
+              <button
+                onClick={handleSaveThreshold}
+                className="px-3 py-2 bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-indigo-700 transition-all"
+              >
+                Save
+              </button>
+              <button
+                onClick={() => { setIsEditingThreshold(false); setTempThreshold(completionThreshold.toString()); }}
+                className="p-2 text-slate-400 hover:bg-slate-50 rounded-xl font-bold text-xs"
+              >
+                ✕
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsEditingThreshold(true)}
+              className="px-4 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-100 text-slate-600 hover:text-slate-900 rounded-xl font-black text-xs transition-all flex items-center gap-1.5"
+            >
+              ⚙️ Adjust Timer %
+            </button>
+          )}
         </div>
       </div>
 
