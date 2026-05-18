@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
-import { LogOut, Trophy, User, Award, LayoutDashboard, Sparkles, Radio } from 'lucide-react';
+import { LogOut, Trophy, User, Award, LayoutDashboard, Sparkles, Radio, BookOpen } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 
@@ -12,7 +12,7 @@ export const Navbar = () => {
   const pathname = usePathname();
   const { isAdmin, signOut, user } = useAuthStore();
 
-  const showUpcomingNotice = () => {
+  const showUpcomingNotice = (itemName: string) => {
     toast.custom((t) => (
       <div
         className={`${
@@ -24,12 +24,18 @@ export const Navbar = () => {
 
         <div className="flex-1 flex gap-4 items-start">
           <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 flex-shrink-0 border border-indigo-100/30">
-            <Radio size={24} className="animate-pulse" />
+            {itemName === 'Books' ? (
+              <BookOpen size={24} className="animate-pulse" />
+            ) : (
+              <Radio size={24} className="animate-pulse" />
+            )}
           </div>
           <div>
-            <p className="text-sm font-black text-slate-800 tracking-tight">Podcast & Quizzes</p>
+            <p className="text-sm font-black text-slate-800 tracking-tight">{itemName}</p>
             <p className="text-xs font-bold text-slate-500 mt-1 leading-relaxed">
-              This segment is currently in production and will be updated soon. Stay tuned for expert audio podcasts and engaging spiritual quizzes!
+              {itemName === 'Books'
+                ? 'Coming soon along with quizzes'
+                : 'This segment is currently in production and will be updated soon. Stay tuned for expert audio podcasts and engaging spiritual quizzes!'}
             </p>
           </div>
         </div>
@@ -42,6 +48,7 @@ export const Navbar = () => {
     { name: 'Profile', href: '/profile', icon: User },
     { name: 'Awards', href: '/awards', icon: Award },
     { name: 'Podcast', href: '/podcast', icon: Radio },
+    { name: 'Books', href: '/books', icon: BookOpen, isUpcoming: true },
   ];
 
   if (isAdmin) {
@@ -65,7 +72,7 @@ export const Navbar = () => {
               onClick={(e) => {
                 if (item.isUpcoming) {
                   e.preventDefault();
-                  showUpcomingNotice();
+                  showUpcomingNotice(item.name);
                 }
               }}
               className={`flex flex-col items-center gap-1 transition-all ${
@@ -99,7 +106,7 @@ export const Navbar = () => {
                 onClick={(e) => {
                   if (item.isUpcoming) {
                     e.preventDefault();
-                    showUpcomingNotice();
+                    showUpcomingNotice(item.name);
                   }
                 }}
                 className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${

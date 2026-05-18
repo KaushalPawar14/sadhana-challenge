@@ -147,7 +147,7 @@ export default function ProfilePage() {
     const start = parseLocalDate(settings.challenge_start_date);
     start.setHours(0, 0, 0, 0);
     const end = parseLocalDate(settings.challenge_end_date);
-    end.setHours(23, 59, 59, 999);
+    end.setHours(0, 0, 0, 0);
     
     const today = new Date();
     today.setHours(0, 0, 0, 0);

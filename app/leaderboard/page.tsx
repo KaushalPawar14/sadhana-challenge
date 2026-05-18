@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/authStore';
 import { DailyLogModal } from '@/components/student/DailyLogModal';
 import { UserProfileModal } from '@/components/student/UserProfileModal';
 import { Flame, Trophy, Plus, CheckCircle2, ChevronRight } from 'lucide-react';
+import { ThemeSwitcher } from '@/components/ThemeSwitcher';
 
 export default function LeaderboardPage() {
   const { user } = useAuthStore();
@@ -443,6 +444,7 @@ export default function LeaderboardPage() {
               >
                 📜 Rules & Score Math
               </button>
+              <ThemeSwitcher />
             </div>
           </div>
         </div>
@@ -776,7 +778,7 @@ export default function LeaderboardPage() {
                     <li className="flex items-start gap-2">
                       <span className="text-violet-500 font-black mt-0.5">•</span>
                       <span>
-                        <strong className="text-slate-700">Quizzes (Upcoming):</strong> Engaging quizzes will also award additional points accordingly, which will be available right after the feature goes live!
+                        <strong className="text-slate-700">Spiritual Quizzes:</strong> Earn +5 points for each correct answer! You must watch at least 80% of the podcast to unlock its quiz; without doing so, it cannot be attempted.
                       </span>
                     </li>
                   </ul>

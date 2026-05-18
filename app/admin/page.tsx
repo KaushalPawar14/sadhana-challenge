@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabaseClient';
 import { Users, ClipboardList, Zap, TrendingUp, AlertCircle, Trophy } from 'lucide-react';
+import { ThemeSwitcher } from '@/components/ThemeSwitcher';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function AdminDashboard() {
@@ -67,9 +68,12 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-10">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center flex-wrap gap-4">
         <h2 className="text-3xl font-black text-slate-900">Omni-Dashboard</h2>
-        <p className="text-sm font-bold text-indigo-600 bg-indigo-50 px-4 py-2 rounded-full">Real-time Overview</p>
+        <div className="flex items-center gap-3">
+          <p className="text-sm font-bold text-indigo-600 bg-indigo-50 px-4 py-2 rounded-full hidden sm:inline-block">Real-time Overview</p>
+          <ThemeSwitcher />
+        </div>
       </div>
 
       {/* Metric Cards */}
