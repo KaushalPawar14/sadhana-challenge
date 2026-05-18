@@ -74,8 +74,7 @@ export function checkAwardUnlocks(userStats: UserStats): string[] {
   // 'unbroken_flame'  → streak_count >= 7
   if (userStats.streak_count >= 7) newlyUnlocked.push('unbroken_flame');
 
-  // 'jijnasu_scholar' → cumulative reading_minutes >= 300
-  if (userStats.cumulative_reading_minutes >= 300) newlyUnlocked.push('jijnasu_scholar');
+
 
   // 'brahma_muhurta'  → 5+ logs submitted before 6 AM
   if (userStats.early_morning_logs_count >= 5) newlyUnlocked.push('brahma_muhurta');

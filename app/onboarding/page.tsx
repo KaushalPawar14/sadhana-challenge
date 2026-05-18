@@ -95,8 +95,12 @@ export default function OnboardingPage() {
 
   const validateStep = () => {
     if (step === 1) {
-      if (allowedFields.includes('full_name') && !formData.full_name) {
+      if (!formData.full_name || !formData.full_name.trim()) {
         toast.error('Full Name is required');
+        return false;
+      }
+      if (!formData.department || !formData.department.trim()) {
+        toast.error('Department is required');
         return false;
       }
       if (allowedFields.includes('mobile')) {
@@ -119,6 +123,17 @@ export default function OnboardingPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Enforce commitments as strictly mandatory
+    if (!formData.target_chanting || formData.target_chanting < 1) {
+      toast.error('Target Chanting commitment must be at least 1 round');
+      return;
+    }
+    if (!formData.target_reading || formData.target_reading < 5) {
+      toast.error('Target Reading commitment must be at least 5 minutes');
+      return;
+    }
+
     setIsLoading(true);
 
     try {

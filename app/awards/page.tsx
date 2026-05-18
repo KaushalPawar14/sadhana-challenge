@@ -361,7 +361,7 @@ export default function AwardsPage() {
                   ? colorClass.badge
                   : 'bg-slate-100 text-slate-400'
                   }`}>
-                  {award.key === 'jijnasu_scholar' ? 'Locked' : award.isUnlocked ? 'Unlocked' : 'Locked 🔒'}
+                  {award.isUnlocked ? 'Unlocked' : 'Locked 🔒'}
                 </span>
               </div>
 
@@ -399,26 +399,20 @@ export default function AwardsPage() {
                 ) : (
                   <div className="space-y-4">
                     {/* Lock details */}
-                    {award.key === 'jijnasu_scholar' ? (
-                      <p className="text-[10px] font-black text-teal-600 uppercase tracking-wider bg-teal-50 px-3.5 py-2 rounded-2xl inline-block">
-                        📖 Releases in Future Update!
-                      </p>
-                    ) : (
-                      <>
-                        <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-100 flex flex-col items-center justify-center">
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Current Leader</p>
-                          <p className="text-xs font-black text-slate-700 flex items-center gap-1">
-                            👑 {award.winnerNames}
-                          </p>
-                          <span className="text-[10px] font-bold text-indigo-500 mt-1 bg-indigo-50/50 px-2 py-0.5 rounded-md">
-                            {award.bestValue}
-                          </span>
-                        </div>
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center gap-1">
-                          🔒 Unlocks: {formatUnlockDate(award.endDateStr)}
+                    <>
+                      <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-100 flex flex-col items-center justify-center">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Current Leader</p>
+                        <p className="text-xs font-black text-slate-700 flex items-center gap-1">
+                          👑 {award.winnerNames}
                         </p>
-                      </>
-                    )}
+                        <span className="text-[10px] font-bold text-indigo-500 mt-1 bg-indigo-50/50 px-2 py-0.5 rounded-md">
+                          {award.bestValue}
+                        </span>
+                      </div>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center gap-1">
+                        🔒 Unlocks: {formatUnlockDate(award.endDateStr)}
+                      </p>
+                    </>
                   </div>
                 )}
               </div>

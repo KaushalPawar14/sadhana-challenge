@@ -29,8 +29,17 @@ export default function AdminSettings() {
   };
 
   const fetchAdmins = async () => {
-    const { data } = await supabase.from('admin_emails').select('*');
-    setAdmins(data || []);
+    try {
+      const res = await fetch('/api/admin-whitelist');
+      if (res.ok) {
+        const data = await res.json();
+        setAdmins(data || []);
+      } else {
+        console.error("Failed to load admin emails list");
+      }
+    } catch (err) {
+      console.error("Failed to load admin emails list", err);
+    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -94,21 +103,44 @@ export default function AdminSettings() {
   const handleAddAdmin = async (e: any) => {
     e.preventDefault();
     const email = new FormData(e.target).get('email') as string;
-    const { error } = await supabase.from('admin_emails').insert({ email });
-    if (error) toast.error("Failed to add admin or email already exists");
-    else {
-      toast.success("Admin added");
-      fetchAdmins();
-      e.target.reset();
+    
+    try {
+      const res = await fetch('/api/admin-whitelist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+
+      if (res.ok) {
+        toast.success("Admin added successfully! 🛡️");
+        fetchAdmins();
+        e.target.reset();
+      } else {
+        const errData = await res.json();
+        toast.error(errData.error || "Failed to add admin email");
+      }
+    } catch (err) {
+      toast.error("Failed to add admin email");
     }
   };
 
   const handleRemoveAdmin = async (id: string) => {
-    const { error } = await supabase.from('admin_emails').delete().eq('id', id);
-    if (error) toast.error("Failed to remove admin");
-    else {
-      toast.success("Admin removed");
-      fetchAdmins();
+    if (!confirm("Are you sure you want to remove this admin?")) return;
+    
+    try {
+      const res = await fetch(`/api/admin-whitelist?id=${id}`, {
+        method: 'DELETE'
+      });
+
+      if (res.ok) {
+        toast.success("Admin removed successfully! 🗑️");
+        fetchAdmins();
+      } else {
+        const errData = await res.json();
+        toast.error(errData.error || "Failed to remove admin email");
+      }
+    } catch (err) {
+      toast.error("Failed to remove admin email");
     }
   };
 

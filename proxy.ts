@@ -101,6 +101,31 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  // Check onboarding status for all other pages (skip static assets, api routes, admin pages, and onboarding itself)
+  if (
+    !url.pathname.startsWith('/admin') &&
+    !url.pathname.startsWith('/api') &&
+    !url.pathname.startsWith('/auth') &&
+    url.pathname !== '/onboarding'
+  ) {
+    const { data: isAdmin } = await supabase.rpc('is_admin', {
+      user_email: user.email
+    });
+
+    if (!isAdmin) {
+      const { data: profile } = await supabase
+        .from('users')
+        .select('is_onboarded')
+        .eq('id', user.id)
+        .single();
+
+      if (!profile?.is_onboarded) {
+        url.pathname = '/onboarding';
+        return NextResponse.redirect(url);
+      }
+    }
+  }
+
   // Onboarding route
   if (url.pathname === '/onboarding') {
     const { data: profile } = await supabase
