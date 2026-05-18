@@ -41,7 +41,7 @@ export default function PodcastAndQuizzesPage() {
   const { user } = useAuthStore();
 
   // COMPLETION THRESHOLD: Customize this value (e.g. 0.05 for 5%) for quick testing!
-  const COMPLETION_THRESHOLD = 0.01;
+  const COMPLETION_THRESHOLD = 0.80;
 
   // Data State
   const [audiobooks, setAudiobooks] = useState<Audiobook[]>([]);
