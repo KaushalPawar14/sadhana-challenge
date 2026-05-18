@@ -19,6 +19,8 @@ export default function LeaderboardPage() {
   const [hasUnloggedDays, setHasUnloggedDays] = useState(false);
   const [liveActivities, setLiveActivities] = useState<any[]>([]);
   const [bonusEvents, setBonusEvents] = useState<any[]>([]);
+  const [liveListened, setLiveListened] = useState<any[]>([]);
+  const [quizSubmissions, setQuizSubmissions] = useState<any[]>([]);
   const [isRulesOpen, setIsRulesOpen] = useState(false);
 
   // Stable client setup to prevent warnings and auth drops
@@ -97,6 +99,57 @@ export default function LeaderboardPage() {
     }
     setBonusEvents(latestBonus || []);
 
+    // Fetch Latest Audiobook listening completions
+    const { data: latestListened, error: listenError } = await supabase
+      .from('user_audiobook_progress')
+      .select(`
+        id,
+        completed_at,
+        audiobooks:audiobooks!audiobook_id (
+          title
+        ),
+        users:users!user_id (
+          full_name,
+          avatar_url,
+          department,
+          streak_count
+        )
+      `)
+      .eq('is_completed', true)
+      .order('completed_at', { ascending: false })
+      .limit(10);
+
+    if (listenError) {
+      console.error("Error fetching latest listening completions:", listenError.message);
+    }
+    setLiveListened(latestListened || []);
+
+    // Fetch Latest Quiz Submissions
+    const { data: latestSubmissions, error: subError } = await supabase
+      .from('quiz_submissions')
+      .select(`
+        id,
+        score,
+        points_earned,
+        submitted_at,
+        audiobooks:audiobooks!audiobook_id (
+          title
+        ),
+        users:users!user_id (
+          full_name,
+          avatar_url,
+          department,
+          streak_count
+        )
+      `)
+      .order('submitted_at', { ascending: false })
+      .limit(10);
+
+    if (subError) {
+      console.error("Error fetching latest quiz submissions:", subError.message);
+    }
+    setQuizSubmissions(latestSubmissions || []);
+
     // Check if current user logged today and if they have any unlogged past/present days
     if (user) {
       const today = new Date().toISOString().split('T')[0];
@@ -149,6 +202,12 @@ export default function LeaderboardPage() {
         fetchData();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bonus_points' }, () => {
+        fetchData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_audiobook_progress' }, () => {
+        fetchData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'quiz_submissions' }, () => {
         fetchData();
       })
       .subscribe();
@@ -207,10 +266,22 @@ export default function LeaderboardPage() {
     return sortedUsers.find(u => u.id === user?.id);
   }, [sortedUsers, user]);
 
+  const parseUtcDate = (dateStr: string) => {
+    if (!dateStr) return new Date();
+    if (dateStr.endsWith('Z') || dateStr.includes('+')) {
+      return new Date(dateStr);
+    }
+    const normalized = dateStr.replace(' ', 'T');
+    if (!normalized.endsWith('Z')) {
+      return new Date(normalized + 'Z');
+    }
+    return new Date(normalized);
+  };
+
   const formatRelativeTime = (timestamp: string) => {
     if (!timestamp) return 'Just now';
     const now = new Date();
-    const sub = new Date(timestamp);
+    const sub = parseUtcDate(timestamp);
     const diffMs = now.getTime() - sub.getTime();
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMins / 60);
@@ -232,18 +303,19 @@ export default function LeaderboardPage() {
       const u = act.users;
       if (!u) return;
 
-      const isBonusLog = act.chanting_rounds === null && act.reading_minutes === null;
+      const isBlankLog = (act.chanting_rounds === null || act.chanting_rounds === 0) && 
+                         (act.reading_minutes === null || act.reading_minutes === 0);
+      
+      if (isBlankLog) return; // Skip blank log replicas since they are already caught in bonusEvents!
       
       events.push({
         id: `log-${act.id}`,
         user: u,
-        type: isBonusLog ? 'bonus' : 'log',
+        type: 'log',
         title: u.full_name,
-        message: isBonusLog 
-          ? `was awarded bonus points by the Admin! 🌟`
-          : `completed daily Sadhana: chanted ${act.chanting_rounds} rounds and read for ${act.reading_minutes} mins!`,
+        message: `completed daily Sadhana: chanted ${act.chanting_rounds} rounds and read for ${act.reading_minutes} mins!`,
         detail: `+${act.points_earned} Points`,
-        timestamp: new Date(act.submitted_at || act.log_date).getTime(),
+        timestamp: parseUtcDate(act.submitted_at || act.log_date).getTime(),
         timeLabel: formatRelativeTime(act.submitted_at)
       });
     });
@@ -278,17 +350,14 @@ export default function LeaderboardPage() {
       }
     });
 
-    // 4. Add Admin-Granted Bonus events from fetched database logs
     bonusEvents.forEach((b) => {
       const u = b.users;
       if (!u) return;
 
-      // To prevent duplicate admin bonus event (since we also fetch it from activity_logs),
-      // we check if a log event for the same user and point value already exists
       const isDuplicate = events.some(e => 
         e.user.full_name === u.full_name && 
         e.type === 'bonus' && 
-        Math.abs(e.timestamp - new Date(b.given_at).getTime()) < 10000 // within 10 seconds
+        Math.abs(e.timestamp - parseUtcDate(b.given_at).getTime()) < 10000 // within 10 seconds
       );
 
       if (!isDuplicate) {
@@ -299,15 +368,51 @@ export default function LeaderboardPage() {
           title: u.full_name,
           message: `was awarded bonus points by the Admin: "${b.title || 'Exceptional Devotion'}" 🌟`,
           detail: `+${b.points} Points`,
-          timestamp: new Date(b.given_at).getTime(),
+          timestamp: parseUtcDate(b.given_at).getTime(),
           timeLabel: formatRelativeTime(b.given_at)
         });
       }
     });
 
+    // 5. Add Audiobook completion events from fetched user_audiobook_progress logs
+    liveListened.forEach((act) => {
+      const u = act.users;
+      const ab = act.audiobooks;
+      if (!u || !ab) return;
+
+      events.push({
+        id: `listen-${act.id}`,
+        user: u,
+        type: 'listen',
+        title: u.full_name,
+        message: `completed listening to the audiobook: "${ab.title}"! 🎧⚡`,
+        detail: `Quiz Unlocked`,
+        timestamp: parseUtcDate(act.completed_at).getTime(),
+        timeLabel: formatRelativeTime(act.completed_at)
+      });
+    });
+
+    // 6. Add Quiz Submission events from fetched quiz_submissions logs
+    quizSubmissions.forEach((qs) => {
+      const u = qs.users;
+      const ab = qs.audiobooks;
+      if (!u || !ab) return;
+
+      events.push({
+        id: `quiz-${qs.id}`,
+        user: u,
+        type: 'quiz',
+        title: u.full_name,
+        message: `successfully passed the audiobook quiz: "${ab.title}"! 🧠📖`,
+        detail: `+${qs.points_earned} Points`,
+        timestamp: parseUtcDate(qs.submitted_at).getTime(),
+        timeLabel: formatRelativeTime(qs.submitted_at)
+      });
+    });
+
     // Sort combined events descending by timestamp
     return events.sort((a, b) => b.timestamp - a.timestamp).slice(0, 10);
-  }, [liveActivities, users, bonusEvents]);
+  }, [liveActivities, users, bonusEvents, liveListened, quizSubmissions]);
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto min-h-screen bg-slate-50/30">
@@ -541,9 +646,13 @@ export default function LeaderboardPage() {
                       ? 'text-orange-600 bg-orange-50 border border-orange-100/50'
                       : actType === 'bonus'
                         ? 'text-indigo-600 bg-indigo-50 border border-indigo-100/50'
-                        : 'text-amber-600 bg-amber-50 border border-amber-100/50';
+                        : actType === 'quiz'
+                          ? 'text-amber-600 bg-amber-50 border border-amber-200/50 animate-pulse'
+                          : actType === 'listen'
+                            ? 'text-sky-600 bg-sky-50 border border-sky-100/50'
+                            : 'text-slate-600 bg-slate-50 border border-slate-100/50';
 
-                  const emoji = actType === 'log' ? '📿' : actType === 'streak' ? '🔥' : actType === 'bonus' ? '🌟' : '🏆';
+                  const emoji = actType === 'log' ? '📿' : actType === 'streak' ? '🔥' : actType === 'bonus' ? '🌟' : actType === 'quiz' ? '🧠' : actType === 'listen' ? '🎧' : '🏆';
 
                   return (
                     <div key={act.id} className="flex gap-3 items-start p-2.5 rounded-2xl border border-slate-50 hover:bg-slate-50/50 transition-colors">

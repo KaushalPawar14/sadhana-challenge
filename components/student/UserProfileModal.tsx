@@ -35,7 +35,23 @@ export const UserProfileModal = ({ userId, onClose }: UserProfileModalProps) => 
       .from('bonus_points')
       .select('*')
       .eq('user_id', userId);
-    const bonusPointsList = bonusData || [];
+    
+    const bonusPointsList = (bonusData || []).map(b => ({
+      ...b,
+      title: b.title || 'Bonus'
+    }));
+
+    // Fetch Quiz Submissions to include in history chart
+    const { data: quizData } = await supabase
+      .from('quiz_submissions')
+      .select(`
+        points_earned,
+        submitted_at,
+        audiobooks:audiobooks!audiobook_id (
+          title
+        )
+      `)
+      .eq('user_id', userId);
 
     try {
       const res = await fetch(`/api/user-logs?userId=${userId}`);
@@ -77,13 +93,26 @@ export const UserProfileModal = ({ userId, onClose }: UserProfileModalProps) => 
           const bonusPts = dayBonuses.reduce((acc: number, curr: any) => acc + curr.points, 0);
           const bonusDetails = dayBonuses.map((b: any) => `${b.title || 'Bonus'}: +${b.points}`).join(', ');
 
+          // Find quizzes for this day
+          const dayQuizzes = (quizData || []).filter((q: any) => {
+            const qDate = new Date(q.submitted_at);
+            const y = qDate.getFullYear();
+            const m = String(qDate.getMonth() + 1).padStart(2, '0');
+            const dayStr = String(qDate.getDate()).padStart(2, '0');
+            return `${y}-${m}-${dayStr}` === dStr;
+          });
+          const quizPts = dayQuizzes.reduce((acc: number, curr: any) => acc + curr.points_earned, 0);
+          const quizDetails = dayQuizzes.map((q: any) => `${q.audiobooks?.title || 'Quiz'}: +${q.points_earned}`).join(', ');
+
           last7.push({
             date: d.toLocaleDateString('en-US', { weekday: 'short' }),
             dateFull: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
             Chanting: Math.round(chantingPts),
             Reading: Math.round(readingPts),
             Bonus: Math.round(bonusPts),
-            'Bonus Reason': bonusDetails || undefined
+            'Bonus Reason': bonusDetails || undefined,
+            Quiz: Math.round(quizPts),
+            'Quiz Details': quizDetails || undefined
           });
         }
 
@@ -180,7 +209,9 @@ export const UserProfileModal = ({ userId, onClose }: UserProfileModalProps) => 
                           const readingVal = payload.find((p: any) => p.dataKey === 'Reading')?.value || 0;
                           const bonusVal = payload.find((p: any) => p.dataKey === 'Bonus')?.value || 0;
                           const reasonVal = payload[0]?.payload?.['Bonus Reason'];
-
+                          const quizVal = payload.find((p: any) => p.dataKey === 'Quiz')?.value || 0;
+                          const quizReasonVal = payload[0]?.payload?.['Quiz Details'];
+ 
                           return (
                             <div className="bg-white/95 backdrop-blur-sm p-4 rounded-2xl shadow-xl border border-slate-100/80 text-left min-w-[150px] z-50">
                               <p className="text-xs font-black text-slate-800 mb-2">{label}</p>
@@ -209,6 +240,19 @@ export const UserProfileModal = ({ userId, onClose }: UserProfileModalProps) => 
                                   )}
                                 </div>
                               )}
+                              {Number(quizVal) > 0 && (
+                                <div className="mt-1 pt-1 border-t border-slate-100">
+                                  <p className="text-[11px] font-bold text-pink-500 flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-pink-500 inline-block" />
+                                    Quiz: {quizVal} pts
+                                  </p>
+                                  {quizReasonVal && (
+                                    <p className="text-[9px] text-slate-400 font-semibold leading-normal ml-3.5 italic">
+                                      {quizReasonVal}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           );
                         }
@@ -217,7 +261,8 @@ export const UserProfileModal = ({ userId, onClose }: UserProfileModalProps) => 
                     />
                     <Bar dataKey="Chanting" stackId="a" fill="#f97316" />
                     <Bar dataKey="Reading" stackId="a" fill="#14b8a6" />
-                    <Bar dataKey="Bonus" stackId="a" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Bonus" stackId="a" fill="#6366f1" />
+                    <Bar dataKey="Quiz" stackId="a" fill="#ec4899" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

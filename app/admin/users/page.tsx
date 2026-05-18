@@ -229,18 +229,6 @@ export default function AdminUsers() {
                         <Plus size={18} />
                       </button>
                       <button
-                        onClick={() => { setSelectedUser(u); setModalType('award'); }}
-                        className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-all" title="Grant Award"
-                      >
-                        <Award size={18} />
-                      </button>
-                      <button
-                        onClick={() => { setSelectedUser(u); setModalType('history'); }}
-                        className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-all" title="View History"
-                      >
-                        <History size={18} />
-                      </button>
-                      <button
                         onClick={() => handleDelete(u.id)}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all" title="Delete"
                       >

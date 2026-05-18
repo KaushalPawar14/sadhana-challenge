@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { 
   LayoutDashboard, Users, Settings, Award, 
-  ListOrdered, Eye, LogOut, ShieldCheck 
+  ListOrdered, Eye, LogOut, ShieldCheck, BookOpen 
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -16,11 +16,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   const menuItems = [
     { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+    { name: 'Audiobooks', href: '/admin/audiobooks', icon: BookOpen },
     { name: 'Users', href: '/admin/users', icon: Users },
     { name: 'Settings', href: '/admin/settings', icon: Settings },
-    { name: 'Awards', href: '/admin/awards', icon: Award },
     { name: 'Logs', href: '/admin/logs', icon: ListOrdered },
   ];
+
 
   return (
     <div className="min-h-screen bg-slate-50 flex">

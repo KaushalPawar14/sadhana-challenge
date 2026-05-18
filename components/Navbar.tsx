@@ -37,11 +37,11 @@ export const Navbar = () => {
     ), { duration: 4000, position: 'bottom-right' });
   };
 
-  const navItems = [
+  const navItems: Array<{ name: string; href: string; icon: any; isUpcoming?: boolean }> = [
     { name: 'Leaderboard', href: '/leaderboard', icon: Trophy },
     { name: 'Profile', href: '/profile', icon: User },
     { name: 'Awards', href: '/awards', icon: Award },
-    { name: 'Podcast and Quizzes', href: '#upcoming', icon: Radio, isUpcoming: true },
+    { name: 'Podcast', href: '/podcast', icon: Radio },
   ];
 
   if (isAdmin) {

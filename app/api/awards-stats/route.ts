@@ -30,10 +30,18 @@ export async function GET(request: Request) {
     
     if (logsError) throw logsError;
 
+    // Fetch quiz submissions
+    const { data: quizList, error: quizError } = await supabaseAdmin
+      .from('quiz_submissions')
+      .select('user_id, points_earned, score');
+    
+    if (quizError) throw quizError;
+
     return NextResponse.json({
       usersList: usersList || [],
       bonusList: bonusList || [],
-      logsList: logsList || []
+      logsList: logsList || [],
+      quizList: quizList || []
     });
   } catch (error: any) {
     console.error('Failed to fetch awards stats:', error);

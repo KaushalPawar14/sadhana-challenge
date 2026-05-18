@@ -30,6 +30,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<any>(null);
   const [logs, setLogs] = useState<any[]>([]);
   const [bonusPointsList, setBonusPointsList] = useState<any[]>([]);
+  const [quizSubmissionsList, setQuizSubmissionsList] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>({});
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({
@@ -83,7 +84,25 @@ export default function ProfilePage() {
         .from('bonus_points')
         .select('*')
         .eq('user_id', user?.id);
-      setBonusPointsList(bonusData || []);
+      
+      const combinedBonuses = (bonusData || []).map(b => ({
+        ...b,
+        title: b.title || 'Bonus'
+      }));
+      setBonusPointsList(combinedBonuses);
+
+      // Fetch Quiz Submissions to include in dashboard chart
+      const { data: quizData } = await supabase
+        .from('quiz_submissions')
+        .select(`
+          points_earned,
+          submitted_at,
+          audiobooks:audiobooks!audiobook_id (
+            title
+          )
+        `)
+        .eq('user_id', user?.id);
+      setQuizSubmissionsList(quizData || []);
 
       // Fetch Settings
       const { data: appSettings } = await supabase.from('app_settings').select('*');
@@ -179,17 +198,30 @@ export default function ProfilePage() {
       const bonusPts = dayBonuses.reduce((acc: number, curr: any) => acc + curr.points, 0);
       const bonusDetails = dayBonuses.map((b: any) => `${b.title || 'Bonus'}: +${b.points}`).join(', ');
 
+      // Find quizzes for this day
+      const dayQuizzes = quizSubmissionsList.filter((q: any) => {
+        const qDate = new Date(q.submitted_at);
+        const y = qDate.getFullYear();
+        const m = String(qDate.getMonth() + 1).padStart(2, '0');
+        const dayStr = String(qDate.getDate()).padStart(2, '0');
+        return `${y}-${m}-${dayStr}` === dStr;
+      });
+      const quizPts = dayQuizzes.reduce((acc: number, curr: any) => acc + curr.points_earned, 0);
+      const quizDetails = dayQuizzes.map((q: any) => `${q.audiobooks?.title || 'Quiz'}: +${q.points_earned}`).join(', ');
+
       last14.push({
         date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
         Chanting: Math.round(chantingPts),
         Reading: Math.round(readingPts),
         Bonus: Math.round(bonusPts),
         'Bonus Reason': bonusDetails || undefined,
+        Quiz: Math.round(quizPts),
+        'Quiz Details': quizDetails || undefined,
         isMissing: !log
       });
     }
     return last14;
-  }, [logs, profile, bonusPointsList]);
+  }, [logs, profile, bonusPointsList, quizSubmissionsList]);
 
   const currentTier = useMemo(() => {
     const pts = profile?.total_points || 0;
@@ -413,14 +445,16 @@ export default function ProfilePage() {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 600 }} />
                 <Tooltip 
-                  cursor={{ fill: '#f8fafc' }} 
+                  cursor={{ fill: '#f8fafc' }}
                   content={({ active, payload, label }) => {
                     if (active && payload && payload.length) {
                       const chantingVal = payload.find((p: any) => p.dataKey === 'Chanting')?.value || 0;
                       const readingVal = payload.find((p: any) => p.dataKey === 'Reading')?.value || 0;
                       const bonusVal = payload.find((p: any) => p.dataKey === 'Bonus')?.value || 0;
                       const reasonVal = payload[0]?.payload?.['Bonus Reason'];
-
+                      const quizVal = payload.find((p: any) => p.dataKey === 'Quiz')?.value || 0;
+                      const quizReasonVal = payload[0]?.payload?.['Quiz Details'];
+ 
                       return (
                         <div className="bg-white/95 backdrop-blur-sm p-4 rounded-2xl shadow-xl border border-slate-100/80 text-left min-w-[150px] z-50">
                           <p className="text-xs font-black text-slate-800 mb-2">{label}</p>
@@ -449,6 +483,19 @@ export default function ProfilePage() {
                               )}
                             </div>
                           )}
+                          {Number(quizVal) > 0 && (
+                            <div className="mt-1 pt-1 border-t border-slate-100">
+                              <p className="text-[11px] font-bold text-pink-500 flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-pink-500 inline-block" />
+                                Quiz: {quizVal} pts
+                              </p>
+                              {quizReasonVal && (
+                                <p className="text-[9px] text-slate-400 font-semibold leading-normal ml-3.5 italic">
+                                  {quizReasonVal}
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     }
@@ -458,7 +505,8 @@ export default function ProfilePage() {
                 <Legend iconType="circle" />
                 <Bar dataKey="Chanting" stackId="a" fill="#f97316" />
                 <Bar dataKey="Reading" stackId="a" fill="#14b8a6" />
-                <Bar dataKey="Bonus" stackId="a" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Bonus" stackId="a" fill="#6366f1" />
+                <Bar dataKey="Quiz" stackId="a" fill="#ec4899" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

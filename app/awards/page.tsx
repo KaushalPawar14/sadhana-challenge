@@ -93,11 +93,12 @@ export default function AwardsPage() {
 
       // 2. Fetch ranking aggregates securely through server-side API (bypasses client RLS restrictions)
       const res = await fetch('/api/awards-stats');
-      const stats = res.ok ? await res.json() : { usersList: [], bonusList: [], logsList: [] };
+      const stats = res.ok ? await res.json() : { usersList: [], bonusList: [], logsList: [], quizList: [] };
 
       const usersList = (stats.usersList || []) as any[];
       const bonusList = (stats.bonusList || []) as any[];
       const logsList = (stats.logsList || []) as any[];
+      const quizList = (stats.quizList || []) as any[];
 
       // 5. Fetch app settings to get challenge end date
       const { data: appSettings } = await supabase
@@ -118,7 +119,7 @@ export default function AwardsPage() {
       const now = new Date();
       const hasEnded = now > endDate;
 
-      // 7. Perform calculations for the 4 automatic awards
+      // 7. Perform calculations for the automatic awards
 
       // -- Rising Sadhaka (Highest total points)
       let maxPoints = 0;
@@ -155,6 +156,18 @@ export default function AwardsPage() {
       });
       const mahayogiWinners = Array.from(new Set(logsList.filter(l => l.points_earned === maxSingleDayPoints && maxSingleDayPoints > 0).map(l => l.user_id)));
       const mahayogiWinnerNames = usersList.filter(u => mahayogiWinners.includes(u.id)).map(u => u.full_name).join(', ');
+
+      // -- Jijnasu Scholar (Highest sum of quiz points earned)
+      const quizSums: Record<string, number> = {};
+      quizList.forEach(q => {
+        quizSums[q.user_id] = (quizSums[q.user_id] || 0) + q.points_earned;
+      });
+      let maxQuizSum = 0;
+      Object.values(quizSums).forEach(sum => {
+        if (sum > maxQuizSum) maxQuizSum = sum;
+      });
+      const quizWinners = Object.keys(quizSums).filter(uid => quizSums[uid] === maxQuizSum && maxQuizSum > 0);
+      const quizWinnerNames = usersList.filter(u => quizWinners.includes(u.id)).map(u => u.full_name).join(', ');
 
       // 8. Combine everything into a dynamic list
       const calculatedAwards = [
@@ -203,10 +216,10 @@ export default function AwardsPage() {
           name: 'Jijnasu Scholar',
           icon: JijnasuScholar,
           color: 'teal',
-          isEligible: false,
-          winnerNames: 'Under construction',
-          bestValue: 'Pending',
-          unlockedMsg: 'Unlock criteria: Under construction (quizzes releasing soon).'
+          isEligible: quizWinners.includes(user?.id || ''),
+          winnerNames: quizWinnerNames || 'None yet',
+          bestValue: `${maxQuizSum} Quiz Pts`,
+          unlockedMsg: `Won by achieving the highest total quiz score of ${maxQuizSum} points! 🧠📖`
         }
       ];
 
