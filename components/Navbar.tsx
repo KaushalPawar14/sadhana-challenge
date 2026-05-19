@@ -48,7 +48,7 @@ export const Navbar = () => {
     { name: 'Profile', href: '/profile', icon: User },
     { name: 'Awards', href: '/awards', icon: Award },
     { name: 'Podcast', href: '/podcast', icon: Radio },
-    { name: 'Books', href: '/books', icon: BookOpen, isUpcoming: true },
+    { name: 'Books', href: '/books', icon: BookOpen },
   ];
 
   if (isAdmin) {

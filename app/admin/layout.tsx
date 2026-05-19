@@ -1,9 +1,10 @@
 'use client';
 
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
+import { supabase } from '@/lib/supabaseClient';
 import { 
   LayoutDashboard, Users, Settings, Award, 
   ListOrdered, Eye, LogOut, ShieldCheck, BookOpen 
@@ -13,10 +14,30 @@ import { motion } from 'framer-motion';
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { user, signOut } = useAuthStore();
+  const [challengeImageUrl, setChallengeImageUrl] = useState<string>('');
+
+  useEffect(() => {
+    async function fetchChallengeImage() {
+      try {
+        const { data } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'challenge_image_url')
+          .maybeSingle();
+        if (data?.value) {
+          setChallengeImageUrl(data.value);
+        }
+      } catch (err) {
+        console.error('Error loading challenge cover image:', err);
+      }
+    }
+    fetchChallengeImage();
+  }, []);
 
   const menuItems = [
     { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
     { name: 'Audiobooks', href: '/admin/audiobooks', icon: BookOpen },
+    { name: 'Books', href: '/admin/books', icon: BookOpen },
     { name: 'Users', href: '/admin/users', icon: Users },
     { name: 'Settings', href: '/admin/settings', icon: Settings },
     { name: 'Logs', href: '/admin/logs', icon: ListOrdered },
@@ -28,11 +49,17 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       {/* Admin Sidebar */}
       <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col fixed inset-y-0 z-50">
         <div className="p-8 flex flex-col items-center">
-          <div className="w-16 h-16 bg-indigo-500 rounded-2xl flex items-center justify-center text-white mb-4 shadow-lg shadow-indigo-500/20">
-            <ShieldCheck size={32} />
-          </div>
-          <h1 className="font-black text-xl text-white tracking-tight">OMNIPOTENT</h1>
-          <span className="text-[10px] font-black bg-indigo-500 text-white px-2 py-0.5 rounded-full mt-2">ADMIN PANEL</span>
+          {challengeImageUrl ? (
+            <img
+              src={challengeImageUrl}
+              alt="Challenge Logo"
+              className="w-20 h-20 rounded-full object-cover border-4 border-indigo-500/30 shadow-lg shadow-indigo-500/20"
+            />
+          ) : (
+            <div className="w-20 h-20 bg-indigo-500/20 rounded-full flex items-center justify-center text-indigo-400 border-4 border-indigo-500/30">
+              <BookOpen size={32} />
+            </div>
+          )}
         </div>
 
         <nav className="flex-1 px-4 space-y-2 mt-4">

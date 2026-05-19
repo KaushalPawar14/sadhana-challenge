@@ -16,10 +16,24 @@ export default function AdminDashboard() {
     topUsers: [] as any[],
     streakData: [] as any[]
   });
+  const [activeTheme, setActiveTheme] = useState<string>('default');
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     fetchDashboardData();
+
+    const initialTheme = localStorage.getItem('app_theme') || 'default';
+    setActiveTheme(initialTheme);
+
+    const handleThemeChange = () => {
+      const updatedTheme = localStorage.getItem('app_theme') || 'default';
+      setActiveTheme(updatedTheme);
+    };
+
+    window.addEventListener('theme-change', handleThemeChange);
+    return () => {
+      window.removeEventListener('theme-change', handleThemeChange);
+    };
   }, []);
 
   const fetchDashboardData = async () => {
@@ -144,11 +158,38 @@ export default function AdminDashboard() {
         <div className="h-64 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={stats.streakData}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8', fontWeight: 600 }} />
+              <CartesianGrid 
+                strokeDasharray="3 3" 
+                vertical={false} 
+                stroke={activeTheme === 'dark' ? '#1f2937' : activeTheme === 'cream' ? '#e2d1b9' : '#f1f5f9'} 
+              />
+              <XAxis 
+                dataKey="name" 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ 
+                  fontSize: 12, 
+                  fill: activeTheme === 'dark' ? '#94a3b8' : activeTheme === 'cream' ? '#8c6f5e' : '#94a3b8', 
+                  fontWeight: 600 
+                }} 
+              />
               <YAxis hide />
-              <Tooltip cursor={{ fill: '#f8fafc' }} />
-              <Bar dataKey="count" fill="#6366f1" radius={[8, 8, 0, 0]} barSize={40} />
+              <Tooltip 
+                cursor={{ fill: activeTheme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : activeTheme === 'cream' ? 'rgba(92, 64, 51, 0.08)' : '#f8fafc' }} 
+                contentStyle={
+                  activeTheme === 'dark' 
+                    ? { backgroundColor: '#111827', borderColor: '#1f2937', color: '#f8fafc', borderRadius: '1rem', fontWeight: 'bold' } 
+                    : activeTheme === 'cream' 
+                      ? { backgroundColor: '#fdfaf6', borderColor: '#e2d1b9', color: '#5c4033', borderRadius: '1rem', fontWeight: 'bold' } 
+                      : { backgroundColor: '#ffffff', borderColor: '#e2e8f0', color: '#0f172a', borderRadius: '1rem', fontWeight: 'bold' }
+                }
+              />
+              <Bar 
+                dataKey="count" 
+                fill={activeTheme === 'dark' ? '#818cf8' : activeTheme === 'cream' ? '#5c4033' : '#6366f1'} 
+                radius={[8, 8, 0, 0]} 
+                barSize={40} 
+              />
             </BarChart>
           </ResponsiveContainer>
         </div>
