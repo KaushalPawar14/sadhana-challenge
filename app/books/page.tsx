@@ -32,6 +32,10 @@ export default function BooksPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedLanguage, setSelectedLanguage] = useState<'English' | 'Hindi' | 'Gujarati'>('English');
 
+  // Reading stats state
+  const [todayReadingMinutes, setTodayReadingMinutes] = useState<number>(0);
+  const [totalReadingMinutes, setTotalReadingMinutes] = useState<number>(0);
+
   // E-Reader Screen State
   const [activeBook, setActiveBook] = useState<Book | null>(null);
   const [readerHtml, setReaderHtml] = useState<string>('');
@@ -64,9 +68,46 @@ export default function BooksPage() {
   const timerDisplayRef = useRef<HTMLSpanElement>(null);
   const timerIntervalId = useRef<any>(null);
 
+  // Load reading statistics from the database
+  const fetchReadingStats = async () => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from('reading_sessions')
+        .select('seconds_read, created_at')
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      if (data) {
+        let totalSecs = 0;
+        let todaySecs = 0;
+        // Calculate today's date in local system timezone (YYYY-MM-DD format)
+        const todayStr = new Date().toLocaleDateString('en-CA');
+
+        data.forEach(session => {
+          totalSecs += session.seconds_read;
+          // Check if session date falls in today's local date
+          const sessionDateStr = new Date(session.created_at).toLocaleDateString('en-CA');
+          if (sessionDateStr === todayStr) {
+            todaySecs += session.seconds_read;
+          }
+        });
+
+        setTodayReadingMinutes(Math.round(todaySecs / 60));
+        setTotalReadingMinutes(Math.round(totalSecs / 60));
+      }
+    } catch (err) {
+      console.error('Error fetching reading stats:', err);
+    }
+  };
+
   useEffect(() => {
     fetchBooks();
-  }, []);
+    if (user) {
+      fetchReadingStats();
+    }
+  }, [user]);
 
   useEffect(() => {
     if (activeBook) {
@@ -499,6 +540,7 @@ export default function BooksPage() {
     setActiveBook(null);
     setReaderHtml('');
     setReaderError('');
+    fetchReadingStats();
   };
 
   // Exit reader with prompt checking
@@ -605,6 +647,25 @@ export default function BooksPage() {
                       </button>
                     );
                   })}
+                </div>
+
+                {/* Reading Stats Widget */}
+                <div className="flex items-center gap-4 bg-indigo-50/50 border border-indigo-100/50 px-4 py-1.5 rounded-2xl shadow-sm self-start sm:self-center">
+                  <div className="flex items-center gap-2">
+                    <span className="text-indigo-650 text-xs">📅</span>
+                    <div>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Today's Read</p>
+                      <p className="text-xs font-black text-slate-800 leading-none">{todayReadingMinutes} mins</p>
+                    </div>
+                  </div>
+                  <div className="w-px h-6 bg-indigo-100/50" />
+                  <div className="flex items-center gap-2">
+                    <span className="text-indigo-650 text-xs">🏆</span>
+                    <div>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Total Read</p>
+                      <p className="text-xs font-black text-slate-800 leading-none">{totalReadingMinutes} mins</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

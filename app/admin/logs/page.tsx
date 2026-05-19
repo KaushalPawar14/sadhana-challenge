@@ -70,8 +70,11 @@ export default function AdminLogs() {
         </button>
       </div>
 
+      {/* Logs Table Container */}
       <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl overflow-hidden">
-        <div className="overflow-x-auto">
+        
+        {/* Desktop Table View */}
+        <div className="overflow-x-auto hidden md:block">
           <table className="w-full text-left">
             <thead className="bg-slate-50">
               <tr>
@@ -86,7 +89,11 @@ export default function AdminLogs() {
             <tbody className="divide-y divide-slate-50">
               {isLoading ? (
                 Array(5).fill(0).map((_, i) => (
-                  <tr key={i} className="animate-pulse"><td colSpan={6} className="p-10"><div className="h-4 bg-slate-100 rounded w-full" /></td></tr>
+                  <tr key={i} className="animate-pulse">
+                    <td colSpan={6} className="p-10">
+                      <div className="h-4 bg-slate-100 rounded w-full" />
+                    </td>
+                  </tr>
                 ))
               ) : filteredLogs.map((l) => (
                 <tr key={l.id} className="hover:bg-slate-50/50 transition-colors">
@@ -104,13 +111,69 @@ export default function AdminLogs() {
                     )}
                   </td>
                   <td className="p-6 text-right">
-                    <button onClick={() => handleDeleteLog(l)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all"><Trash2 size={18} /></button>
+                    <button onClick={() => handleDeleteLog(l)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer"><Trash2 size={18} /></button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+
+        {/* Mobile Cards View */}
+        <div className="md:hidden p-4 space-y-4">
+          {isLoading ? (
+            Array(3).fill(0).map((_, i) => (
+              <div key={i} className="animate-pulse bg-slate-50 border border-slate-100 rounded-3xl p-5 space-y-4">
+                <div className="h-4 bg-slate-200 rounded w-1/3" />
+                <div className="h-8 bg-slate-200 rounded w-full" />
+              </div>
+            ))
+          ) : filteredLogs.length === 0 ? (
+            <div className="text-center py-8 text-slate-400 font-bold">No activity logs found.</div>
+          ) : (
+            filteredLogs.map((l) => (
+              <div key={l.id} className="bg-slate-50 border border-slate-100 rounded-3xl p-5 space-y-4 hover:shadow-md transition-all">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h4 className="font-bold text-slate-900">{l.users?.full_name}</h4>
+                    <p className="text-xs text-slate-400 font-semibold">{new Date(l.log_date).toLocaleDateString()}</p>
+                  </div>
+                  <span className="font-black text-indigo-600 text-sm">+{l.points_earned} pts</span>
+                </div>
+
+                <div className="flex justify-between items-center text-xs border-t border-slate-200/50 pt-3">
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Spiritual Sadhana</p>
+                    <p className="font-bold text-slate-700">📿 {l.chanting_rounds} Rounds · 📖 {l.reading_minutes}m Reading</p>
+                  </div>
+                  
+                  <div>
+                    {l.is_late_submission ? (
+                      <span className="px-2.5 py-1 bg-amber-50 text-amber-600 rounded-full text-[9px] font-black uppercase flex items-center gap-1">
+                        <AlertCircle size={10} /> Late
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-1 bg-emerald-50 text-emerald-600 rounded-full text-[9px] font-black uppercase flex items-center gap-1">
+                        <CheckCircle2 size={10} /> On Time
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => handleDeleteLog(l)}
+                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer"
+                    title="Delete Log"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
       </div>
     </div>
   );

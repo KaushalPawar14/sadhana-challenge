@@ -91,7 +91,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Metric Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
         {[
           { label: 'Total Students', val: stats.totalUsers, icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-50' },
           { label: 'Logs Today', val: stats.logsToday, icon: ClipboardList, color: 'text-emerald-600', bg: 'bg-emerald-50' },
@@ -103,14 +103,14 @@ export default function AdminDashboard() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
-            className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4"
+            className="bg-white p-4 md:p-6 rounded-[1.5rem] md:rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-3 md:gap-4"
           >
-            <div className={`w-14 h-14 ${m.bg} ${m.color} rounded-2xl flex items-center justify-center`}>
-              <m.icon size={28} />
+            <div className={`w-10 h-10 md:w-14 md:h-14 ${m.bg} ${m.color} rounded-xl md:rounded-2xl flex items-center justify-center flex-shrink-0`}>
+              <m.icon className="w-5 h-5 md:w-7 md:h-7" />
             </div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">{m.label}</p>
-              <p className="text-2xl font-black text-slate-900">{m.val}</p>
+            <div className="min-w-0">
+              <p className="text-[8px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1 truncate">{m.label}</p>
+              <p className="text-lg md:text-2xl font-black text-slate-900 leading-none">{m.val}</p>
             </div>
           </motion.div>
         ))}

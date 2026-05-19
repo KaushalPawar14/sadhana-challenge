@@ -24,9 +24,32 @@ export default function AdminUsers() {
     setIsLoading(true);
     const { data } = await supabase
       .from('users')
-      .select('*')
+      .select('*, reading_sessions(seconds_read, created_at)')
       .order('total_points', { ascending: false });
-    setUsers(data || []);
+
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    const processedUsers = (data || []).map((u: any) => {
+      let totalSecs = 0;
+      let todaySecs = 0;
+      
+      if (u.reading_sessions) {
+        u.reading_sessions.forEach((session: any) => {
+          totalSecs += session.seconds_read;
+          const sessionDateStr = new Date(session.created_at).toLocaleDateString('en-CA');
+          if (sessionDateStr === todayStr) {
+            todaySecs += session.seconds_read;
+          }
+        });
+      }
+
+      return {
+        ...u,
+        todayReadingMinutes: Math.round(todaySecs / 60),
+        totalReadingMinutes: Math.round(totalSecs / 60)
+      };
+    });
+
+    setUsers(processedUsers);
     setIsLoading(false);
   };
 
@@ -110,9 +133,9 @@ export default function AdminUsers() {
   };
 
   const exportToCSV = () => {
-    const headers = ['Name', 'Email', 'Department', 'Points', 'Streak', 'Joined'];
+    const headers = ['Name', 'Email', 'Department', 'Points', 'Streak', 'Today Reading (min)', 'Total Reading (min)', 'Joined'];
     const rows = filteredUsers.map(u => [
-      u.full_name, u.email, u.department, u.total_points, u.streak_count, u.created_at
+      u.full_name, u.email, u.department, u.total_points, u.streak_count, u.todayReadingMinutes || 0, u.totalReadingMinutes || 0, u.created_at
     ]);
     const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -153,15 +176,18 @@ export default function AdminUsers() {
         </div>
       </div>
 
-      {/* Users Table */}
+      {/* Users Table Container */}
       <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl overflow-hidden">
-        <div className="overflow-x-auto">
+        
+        {/* Desktop Table View */}
+        <div className="overflow-x-auto hidden md:block">
           <table className="w-full text-left">
             <thead className="bg-slate-50">
               <tr>
                 <th className="p-6 font-black text-slate-400 uppercase text-[10px] tracking-widest">Student</th>
                 <th className="p-6 font-black text-slate-400 uppercase text-[10px] tracking-widest">Department</th>
                 <th className="p-6 font-black text-slate-400 uppercase text-[10px] tracking-widest">Progress</th>
+                <th className="p-6 font-black text-slate-400 uppercase text-[10px] tracking-widest">Reading Time</th>
                 <th className="p-6 font-black text-slate-400 uppercase text-[10px] tracking-widest">Status</th>
                 <th className="p-6 font-black text-slate-400 uppercase text-[10px] tracking-widest text-right">Actions</th>
               </tr>
@@ -169,7 +195,11 @@ export default function AdminUsers() {
             <tbody className="divide-y divide-slate-50">
               {isLoading ? (
                 Array(5).fill(0).map((_, i) => (
-                  <tr key={i} className="animate-pulse"><td colSpan={5} className="p-10"><div className="h-4 bg-slate-100 rounded w-full" /></td></tr>
+                  <tr key={i} className="animate-pulse">
+                    <td colSpan={6} className="p-10">
+                      <div className="h-4 bg-slate-100 rounded w-full" />
+                    </td>
+                  </tr>
                 ))
               ) : filteredUsers.map((u) => (
                 <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
@@ -199,6 +229,19 @@ export default function AdminUsers() {
                     </div>
                   </td>
                   <td className="p-6">
+                    <div className="flex items-center gap-4">
+                      <div>
+                        <p className="font-black text-indigo-600">{u.todayReadingMinutes || 0}m</p>
+                        <p className="text-[10px] text-slate-400 font-black uppercase">Today</p>
+                      </div>
+                      <div className="h-8 w-px bg-slate-100" />
+                      <div>
+                        <p className="font-black text-slate-700">{u.totalReadingMinutes || 0}m</p>
+                        <p className="text-[10px] text-slate-400 font-black uppercase">Total</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="p-6">
                     {u.is_onboarded ? (
                       <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-[10px] font-black uppercase">Onboarded</span>
                     ) : (
@@ -209,13 +252,13 @@ export default function AdminUsers() {
                     <div className="flex justify-end gap-2">
                       <button
                         onClick={() => { setSelectedUser(u); setModalType('bonus'); }}
-                        className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Give Bonus"
+                        className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all cursor-pointer" title="Give Bonus"
                       >
                         <Plus size={18} />
                       </button>
                       <button
                         onClick={() => handleDelete(u.id)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all" title="Delete"
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer" title="Delete"
                       >
                         <Trash2 size={18} />
                       </button>
@@ -226,6 +269,84 @@ export default function AdminUsers() {
             </tbody>
           </table>
         </div>
+
+        {/* Mobile Cards View */}
+        <div className="md:hidden p-4 space-y-4">
+          {isLoading ? (
+            Array(3).fill(0).map((_, i) => (
+              <div key={i} className="animate-pulse bg-slate-50 border border-slate-100 rounded-3xl p-5 space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-slate-200 rounded-full" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 bg-slate-200 rounded w-1/2" />
+                    <div className="h-3 bg-slate-200 rounded w-3/4" />
+                  </div>
+                </div>
+                <div className="h-8 bg-slate-200 rounded w-full" />
+              </div>
+            ))
+          ) : filteredUsers.length === 0 ? (
+            <div className="text-center py-8 text-slate-400 font-bold">No students found.</div>
+          ) : (
+            filteredUsers.map((u) => (
+              <div key={u.id} className="bg-slate-50 border border-slate-100 rounded-3xl p-5 space-y-4 hover:shadow-md transition-all">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-700 font-bold">
+                    {u.full_name?.[0]}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-slate-900 truncate">{u.full_name}</p>
+                    <p className="text-xs text-slate-400 truncate">{u.email}</p>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-y-3 gap-x-2 text-xs border-t border-b border-slate-200/50 py-3">
+                  <div>
+                    <p className="font-black text-slate-900">{u.total_points} pts</p>
+                    <p className="text-[9px] text-slate-400 font-black uppercase tracking-wider">Total Points</p>
+                  </div>
+                  <div>
+                    <p className="font-black text-orange-500">{u.streak_count} days</p>
+                    <p className="text-[9px] text-slate-400 font-black uppercase tracking-wider">Streak</p>
+                  </div>
+                  <div>
+                    <p className="font-black text-indigo-600">{u.todayReadingMinutes || 0} min</p>
+                    <p className="text-[9px] text-slate-400 font-black uppercase tracking-wider">Today's Read</p>
+                  </div>
+                  <div>
+                    <p className="font-black text-slate-750">{u.totalReadingMinutes || 0} min</p>
+                    <p className="text-[9px] text-slate-400 font-black uppercase tracking-wider">Total Read</p>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <div>
+                    {u.is_onboarded ? (
+                      <span className="px-2.5 py-1 bg-emerald-50 text-emerald-600 rounded-full text-[9px] font-black uppercase">Onboarded</span>
+                    ) : (
+                      <span className="px-2.5 py-1 bg-amber-50 text-amber-600 rounded-full text-[9px] font-black uppercase">Pending</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => { setSelectedUser(u); setModalType('bonus'); }}
+                      className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all cursor-pointer" title="Give Bonus"
+                    >
+                      <Plus size={18} />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(u.id)}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer" title="Delete"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
       </div>
 
       {/* Modals */}
