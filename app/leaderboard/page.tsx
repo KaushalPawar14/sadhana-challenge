@@ -8,6 +8,7 @@ import { DailyLogModal } from '@/components/student/DailyLogModal';
 import { UserProfileModal } from '@/components/student/UserProfileModal';
 import { Flame, Trophy, Plus, CheckCircle2, ChevronRight } from 'lucide-react';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
+import { toast } from 'react-hot-toast';
 
 export default function LeaderboardPage() {
   const { user } = useAuthStore();
@@ -439,7 +440,7 @@ export default function LeaderboardPage() {
                 Ends: {formatLocalDate(settings.challenge_end_date)}
               </span>
               <button
-                onClick={() => setIsRulesOpen(true)}
+                onClick={() => toast.error("Rules are under update!")}
                 className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 hover:bg-amber-100/70 border border-amber-100 text-amber-700 rounded-full text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95"
               >
                 📜 Rules & Score Math
@@ -475,7 +476,8 @@ export default function LeaderboardPage() {
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              onClick={() => setIsLogModalOpen(true)}
+              onClick={() => toast.error("Log activity is under update!")}
+              // onClick={() => setIsLogModalOpen(true)}
               className="bg-orange-500 hover:bg-orange-600 text-white p-3.5 rounded-2xl flex items-center justify-center gap-2 flex-1 md:flex-initial min-w-[130px] shadow-md shadow-orange-500/10 border border-orange-400/20 transition-all font-bold text-xs md:text-sm cursor-pointer whitespace-nowrap"
             >
               <Plus size={16} />
