@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 // 1. Swap to the SSR Browser Client
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabaseClient';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from 'react-hot-toast';
 import { Save, Sparkles } from 'lucide-react';
@@ -28,11 +28,6 @@ const DEFAULT_DATA: OnboardingData = {
   target_reading: 30,
   target_hearing: 30,
 };
-
-const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export default function OnboardingPage() {
   const router = useRouter();

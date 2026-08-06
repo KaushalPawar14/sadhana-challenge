@@ -1,199 +1,185 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
-import { supabase } from '@/lib/supabaseClient';
-import { Users, ClipboardList, Zap, TrendingUp, AlertCircle, Trophy } from 'lucide-react';
-import { ThemeSwitcher } from '@/components/ThemeSwitcher';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import {
+  AlertTriangle,
+  ArrowRight,
+  CalendarDays,
+  CheckCircle2,
+  CircleGauge,
+  ClipboardCheck,
+  Clock3,
+  Database,
+  Target,
+  UserRoundCheck,
+  UsersRound,
+} from 'lucide-react';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import { commandCenterSnapshot as snapshot } from '@/lib/dashboardSnapshot';
+
+const modeStyles = {
+  Push: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  Normal: 'bg-blue-50 text-blue-700 border-blue-200',
+  'Cool down': 'bg-amber-50 text-amber-700 border-amber-200',
+  Verify: 'bg-purple-50 text-purple-700 border-purple-200',
+};
+
+function progress(actual: number, target: number) {
+  if (target <= 0) return actual > 0 ? 100 : 0;
+  return Math.min(100, Math.round((actual / target) * 100));
+}
 
 export default function AdminDashboard() {
-  const [stats, setStats] = useState({
-    totalUsers: 0,
-    logsToday: 0,
-    totalPoints: 0,
-    missingLogs: [] as string[],
-    topUsers: [] as any[],
-    streakData: [] as any[]
-  });
-  const [activeTheme, setActiveTheme] = useState<string>('default');
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    fetchDashboardData();
-
-    const initialTheme = localStorage.getItem('app_theme') || 'default';
-    setActiveTheme(initialTheme);
-
-    const handleThemeChange = () => {
-      const updatedTheme = localStorage.getItem('app_theme') || 'default';
-      setActiveTheme(updatedTheme);
-    };
-
-    window.addEventListener('theme-change', handleThemeChange);
-    return () => {
-      window.removeEventListener('theme-change', handleThemeChange);
-    };
-  }, []);
-
-  const fetchDashboardData = async () => {
-    setIsLoading(true);
-    const today = new Date().toISOString().split('T')[0];
-
-    // 1. Total Users
-    const { count: userCount } = await supabase.from('users').select('*', { count: 'exact', head: true });
-    
-    // 2. Logs Today
-    const { count: logCount } = await supabase.from('activity_logs').select('*', { count: 'exact', head: true }).eq('log_date', today);
-    
-    // 3. Top Users
-    const { data: topUsers } = await supabase.from('users').select('full_name, total_points, department').order('total_points', { ascending: false }).limit(5);
-    
-    // 4. Missing Logs
-    const { data: usersWithLogs } = await supabase.from('activity_logs').select('user_id').eq('log_date', today);
-    const loggedIds = usersWithLogs?.map(l => l.user_id) || [];
-    const { data: missingUsers } = await supabase.from('users').select('full_name').not('id', 'in', `(${loggedIds.join(',') || '00000000-0000-0000-0000-000000000000'})`).limit(10);
-
-    // 5. Total Points
-    const { data: pointsData } = await supabase.from('users').select('total_points, streak_count');
-    const totalPoints = pointsData?.reduce((acc, curr) => acc + (curr.total_points || 0), 0) || 0;
-
-    // 6. Streak Data for Chart
-    const streakGroups = pointsData?.reduce((acc: any, curr) => {
-      const s = curr.streak_count || 0;
-      const bucket = s === 0 ? '0' : s <= 3 ? '1-3' : s <= 7 ? '4-7' : '8+';
-      acc[bucket] = (acc[bucket] || 0) + 1;
-      return acc;
-    }, {});
-    const streakChart = Object.entries(streakGroups).map(([name, count]) => ({ name, count }));
-
-    setStats({
-      totalUsers: userCount || 0,
-      logsToday: logCount || 0,
-      totalPoints,
-      topUsers: topUsers || [],
-      missingLogs: missingUsers?.map(u => u.full_name) || [],
-      streakData: streakChart
-    });
-    setIsLoading(false);
-  };
-
-  if (isLoading) return <div className="p-10 text-slate-400 font-bold">Initializing Dashboard...</div>;
+  const completionRate = Math.round(
+    (snapshot.sadhanaSubmitted / snapshot.activeStudents) * 100,
+  );
 
   return (
-    <div className="space-y-10">
-      <div className="flex justify-between items-center flex-wrap gap-4">
-        <h2 className="text-3xl font-black text-slate-900">Omni-Dashboard</h2>
-        <div className="flex items-center gap-3">
-          <p className="text-sm font-bold text-indigo-600 bg-indigo-50 px-4 py-2 rounded-full hidden sm:inline-block">Real-time Overview</p>
-          <ThemeSwitcher />
+    <div className="space-y-8 pb-12">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-indigo-600">
+            FOLK Surat command centre
+          </p>
+          <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
+            What needs attention today?
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm font-semibold text-slate-500">
+            Quarter position, student priorities, calendar pressure and approvals in one guide-facing view.
+          </p>
+        </div>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-bold text-amber-900">
+          {snapshot.label} · no real-student activity
         </div>
       </div>
 
-      {/* Metric Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {[
-          { label: 'Total Students', val: stats.totalUsers, icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-          { label: 'Logs Today', val: stats.logsToday, icon: ClipboardList, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-          { label: 'Total Points', val: stats.totalPoints.toLocaleString(), icon: Trophy, color: 'text-amber-600', bg: 'bg-amber-50' },
-          { label: 'Completion Rate', val: `${Math.round((stats.logsToday / (stats.totalUsers || 1)) * 100)}%`, icon: Zap, color: 'text-purple-600', bg: 'bg-purple-50' },
-        ].map((m, i) => (
-          <motion.div 
-            key={m.label}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
-            className="bg-white p-4 md:p-6 rounded-[1.5rem] md:rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-3 md:gap-4"
-          >
-            <div className={`w-10 h-10 md:w-14 md:h-14 ${m.bg} ${m.color} rounded-xl md:rounded-2xl flex items-center justify-center flex-shrink-0`}>
-              <m.icon className="w-5 h-5 md:w-7 md:h-7" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[8px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1 truncate">{m.label}</p>
-              <p className="text-lg md:text-2xl font-black text-slate-900 leading-none">{m.val}</p>
-            </div>
-          </motion.div>
+          { label: 'Active students', value: snapshot.activeStudents, detail: 'Surat total', icon: UsersRound, tone: 'bg-indigo-50 text-indigo-600' },
+          { label: 'Sādhana today', value: `${completionRate}%`, detail: `${snapshot.sadhanaSubmitted} of ${snapshot.activeStudents}`, icon: CheckCircle2, tone: 'bg-emerald-50 text-emerald-600' },
+          { label: 'Priority students', value: snapshot.priorityStudents, detail: 'Need one action', icon: UserRoundCheck, tone: 'bg-amber-50 text-amber-600' },
+          { label: 'Approvals', value: snapshot.pendingApprovals, detail: 'Nothing automatic', icon: ClipboardCheck, tone: 'bg-purple-50 text-purple-600' },
+          { label: 'Corpus ready', value: '737', detail: 'Local reviewed sources', icon: Database, tone: 'bg-sky-50 text-sky-600' },
+        ].map(({ label, value, detail, icon: Icon, tone }) => (
+          <article key={label} className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+            <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${tone}`}><Icon size={21} /></div>
+            <p className="mt-5 text-xs font-black uppercase tracking-wider text-slate-400">{label}</p>
+            <p className="mt-1 text-3xl font-black text-slate-950">{value}</p>
+            <p className="mt-1 text-xs font-bold text-slate-500">{detail}</p>
+          </article>
         ))}
-      </div>
+      </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Top 5 Students */}
-        <section className="lg:col-span-2 bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm">
-          <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
-            <TrendingUp size={20} className="text-indigo-600" /> Top 5 Students
-          </h3>
-          <div className="space-y-4">
-            {stats.topUsers.map((u, i) => (
-              <div key={i} className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl">
-                <span className="w-6 font-black text-slate-300">#{i+1}</span>
-                <div className="flex-1">
-                  <p className="font-bold text-slate-800">{u.full_name}</p>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">{u.department}</p>
+      <div className="grid gap-7 xl:grid-cols-[1.2fr_0.8fr]">
+        <section className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-7">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="flex items-center gap-2 text-xl font-black text-slate-900"><CircleGauge className="text-indigo-600" /> Chanting distribution</h2>
+              <p className="mt-1 text-sm font-semibold text-slate-500">Exclusive brackets; every student appears once.</p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{snapshot.quarter}</span>
+          </div>
+          <div className="mt-6 h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={288}>
+              <BarChart data={snapshot.chanting} margin={{ left: -22, right: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis dataKey="bracket" axisLine={false} tickLine={false} tick={{ fontSize: 12, fontWeight: 700 }} />
+                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
+                <Tooltip contentStyle={{ borderRadius: 14, borderColor: '#e2e8f0', fontWeight: 700 }} />
+                <Legend />
+                <Bar dataKey="actual" name="Current" fill="#4f46e5" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="target" name="Q1 target" fill="#f59e0b" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="mt-3 text-xs font-semibold leading-5 text-slate-500">
+            Q1 targets intentionally include no target above 7 rounds. Students already above that level remain visible as actual progress and are not folded into lower brackets.
+          </p>
+        </section>
+
+        <section className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-7">
+          <h2 className="flex items-center gap-2 text-xl font-black text-slate-900"><Target className="text-indigo-600" /> Quarter position</h2>
+          <p className="mt-1 text-sm font-semibold text-slate-500">Current result against the independent Q1 target.</p>
+          <div className="mt-6 space-y-5">
+            {snapshot.quarterProgress.map((metric) => {
+              const value = progress(metric.actual, metric.target);
+              return (
+                <div key={metric.label}>
+                  <div className="flex items-end justify-between gap-4">
+                    <div>
+                      <p className="font-black text-slate-800">{metric.label}</p>
+                      <p className="text-xs font-semibold text-slate-500">{metric.actual} / {metric.target} {metric.unit}</p>
+                    </div>
+                    <span className="text-sm font-black text-indigo-600">{value}%</span>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-indigo-600" style={{ width: `${value}%` }} /></div>
                 </div>
-                <p className="font-black text-indigo-600">{u.total_points.toLocaleString()} pts</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Missing Logs */}
-        <section className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm">
-          <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
-            <AlertCircle size={20} className="text-red-500" /> Missing Today ({stats.totalUsers - stats.logsToday})
-          </h3>
-          <div className="space-y-2">
-            {stats.missingLogs.map((name, i) => (
-              <div key={i} className="text-sm font-bold text-slate-600 p-2 border-b border-slate-50">
-                {name}
-              </div>
-            ))}
-            {stats.missingLogs.length === 0 && <p className="text-emerald-500 font-bold">Everyone has logged! 🎉</p>}
+              );
+            })}
           </div>
         </section>
       </div>
 
-      {/* Streak Overview Chart */}
-      <section className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm">
-        <h3 className="text-lg font-black text-slate-800 mb-6">Active Streaks Distribution</h3>
-        <div className="h-64 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={stats.streakData}>
-              <CartesianGrid 
-                strokeDasharray="3 3" 
-                vertical={false} 
-                stroke={activeTheme === 'dark' ? '#1f2937' : activeTheme === 'cream' ? '#e2d1b9' : '#f1f5f9'} 
-              />
-              <XAxis 
-                dataKey="name" 
-                axisLine={false} 
-                tickLine={false} 
-                tick={{ 
-                  fontSize: 12, 
-                  fill: activeTheme === 'dark' ? '#94a3b8' : activeTheme === 'cream' ? '#8c6f5e' : '#94a3b8', 
-                  fontWeight: 600 
-                }} 
-              />
-              <YAxis hide />
-              <Tooltip 
-                cursor={{ fill: activeTheme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : activeTheme === 'cream' ? 'rgba(92, 64, 51, 0.08)' : '#f8fafc' }} 
-                contentStyle={
-                  activeTheme === 'dark' 
-                    ? { backgroundColor: '#111827', borderColor: '#1f2937', color: '#f8fafc', borderRadius: '1rem', fontWeight: 'bold' } 
-                    : activeTheme === 'cream' 
-                      ? { backgroundColor: '#fdfaf6', borderColor: '#e2d1b9', color: '#5c4033', borderRadius: '1rem', fontWeight: 'bold' } 
-                      : { backgroundColor: '#ffffff', borderColor: '#e2e8f0', color: '#0f172a', borderRadius: '1rem', fontWeight: 'bold' }
-                }
-              />
-              <Bar 
-                dataKey="count" 
-                fill={activeTheme === 'dark' ? '#818cf8' : activeTheme === 'cream' ? '#5c4033' : '#6366f1'} 
-                radius={[8, 8, 0, 0]} 
-                barSize={40} 
-              />
-            </BarChart>
-          </ResponsiveContainer>
+      <section className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-7">
+        <h2 className="flex items-center gap-2 text-xl font-black text-slate-900"><CalendarDays className="text-indigo-600" /> Different strokes for different colleges</h2>
+        <p className="mt-1 text-sm font-semibold text-slate-500">Calendar pressure changes the preaching pace; guide approval controls tentative dates.</p>
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {snapshot.cohorts.map((item) => (
+            <article key={item.cohort} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+              <span className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wide ${modeStyles[item.mode]}`}>{item.mode}</span>
+              <h3 className="mt-4 font-black text-slate-900">{item.cohort}</h3>
+              <p className="mt-2 text-sm font-semibold text-slate-600">{item.reason}</p>
+              <p className="mt-3 text-xs font-black text-indigo-600">{item.nextWindow}</p>
+            </article>
+          ))}
         </div>
       </section>
+
+      <div className="grid gap-7 xl:grid-cols-[1.35fr_0.65fr]">
+        <section className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-7">
+          <h2 className="flex items-center gap-2 text-xl font-black text-slate-900"><UserRoundCheck className="text-amber-600" /> Students to focus on</h2>
+          <p className="mt-1 text-sm font-semibold text-slate-500">Evidence, one next action and a due day—not fifty fields.</p>
+          <div className="mt-6 divide-y divide-slate-100">
+            {snapshot.actions.map((item) => (
+              <article key={item.student} className="grid gap-3 py-5 first:pt-0 md:grid-cols-[0.8fr_1.2fr_auto] md:items-center">
+                <div><p className="font-black text-slate-900">{item.student}</p><p className="text-xs font-bold text-slate-400">{item.cohort}</p></div>
+                <div><p className="text-sm font-semibold text-slate-600">{item.reason}</p><p className="mt-2 flex gap-2 text-sm font-black text-indigo-700"><ArrowRight className="mt-0.5 shrink-0" size={16} />{item.action}</p></div>
+                <span className="w-fit rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-700">{item.due}</span>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-[2rem] border border-slate-100 bg-slate-950 p-6 text-white shadow-sm">
+          <h2 className="flex items-center gap-2 text-xl font-black"><Clock3 className="text-amber-400" /> Upcoming operations</h2>
+          <div className="mt-6 space-y-4">
+            {snapshot.upcoming.map((item) => (
+              <article key={item.title} className="rounded-2xl bg-white/7 p-4 ring-1 ring-white/10">
+                <p className="text-xs font-black uppercase tracking-wide text-amber-300">{item.date}</p>
+                <h3 className="mt-2 font-black">{item.title}</h3>
+                <p className="mt-2 text-xs font-semibold text-slate-300">{item.state}</p>
+              </article>
+            ))}
+          </div>
+          <div className="mt-5 flex gap-3 rounded-2xl bg-purple-400/10 p-4 text-sm font-semibold text-purple-100 ring-1 ring-purple-300/20">
+            <AlertTriangle className="mt-0.5 shrink-0" size={18} />
+            Discounts, calendar corrections and personalized guidance remain approval drafts.
+          </div>
+        </section>
+      </div>
+
+      <footer className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-xs font-semibold text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+        <span>Source: synthetic fixture + approved Q1 targets · generated {snapshot.generatedAt}</span>
+        <span>Live Supabase replaces this snapshot only after authenticated test identities exist.</span>
+      </footer>
     </div>
   );
 }

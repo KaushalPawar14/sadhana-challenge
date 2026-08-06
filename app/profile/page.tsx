@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabaseClient';
 import { useAuthStore } from '@/store/authStore';
 import { AvatarTier } from '@/components/student/AvatarTiers';
 import { ConsistencyHeatmap } from '@/components/student/ConsistencyHeatmap';
@@ -39,12 +39,6 @@ export default function ProfilePage() {
     target_hearing: 0
   });
   const [isLoading, setIsLoading] = useState(true);
-
-  // Initialize the browser client so it can pass authentication cookies safely
-  const [supabase] = useState(() => createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  ));
 
   useEffect(() => {
     if (user) {

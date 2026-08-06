@@ -3,17 +3,29 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
-// Initialize the Supabase Service Role client to bypass RLS securely on the server
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+function serverConfiguration() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const publishableKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !publishableKey || !serviceRoleKey) return null;
+  return { url, publishableKey, serviceRoleKey };
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Unexpected server error';
+}
 
 async function checkAdminAuth() {
+  const configuration = serverConfiguration();
+  if (!configuration) {
+    return { authorized: false, error: 'Supabase server configuration is unavailable' };
+  }
   const cookieStore = await cookies();
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    configuration.url,
+    configuration.publishableKey,
     {
       cookies: {
         get(name) {
@@ -27,6 +39,10 @@ async function checkAdminAuth() {
         },
       },
     }
+  );
+  const supabaseAdmin = createClient(
+    configuration.url,
+    configuration.serviceRoleKey,
   );
 
   const { data: { user } } = await supabase.auth.getUser();
@@ -48,6 +64,13 @@ async function checkAdminAuth() {
   return { authorized: true };
 }
 
+function getAdminClient() {
+  const configuration = serverConfiguration();
+  return configuration
+    ? createClient(configuration.url, configuration.serviceRoleKey)
+    : null;
+}
+
 // GET all admin emails
 export async function GET() {
   const auth = await checkAdminAuth();
@@ -56,6 +79,8 @@ export async function GET() {
   }
 
   try {
+    const supabaseAdmin = getAdminClient();
+    if (!supabaseAdmin) return NextResponse.json({ error: 'Service unavailable' }, { status: 503 });
     const { data, error } = await supabaseAdmin
       .from('admin_emails')
       .select('*')
@@ -63,8 +88,8 @@ export async function GET() {
 
     if (error) throw error;
     return NextResponse.json(data || []);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }
 }
 
@@ -76,6 +101,8 @@ export async function POST(request: Request) {
   }
 
   try {
+    const supabaseAdmin = getAdminClient();
+    if (!supabaseAdmin) return NextResponse.json({ error: 'Service unavailable' }, { status: 503 });
     const { email } = await request.json();
     if (!email) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
@@ -89,8 +116,8 @@ export async function POST(request: Request) {
 
     if (error) throw error;
     return NextResponse.json(data);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }
 }
 
@@ -102,6 +129,8 @@ export async function DELETE(request: Request) {
   }
 
   try {
+    const supabaseAdmin = getAdminClient();
+    if (!supabaseAdmin) return NextResponse.json({ error: 'Service unavailable' }, { status: 503 });
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (!id) {
@@ -115,7 +144,7 @@ export async function DELETE(request: Request) {
 
     if (error) throw error;
     return NextResponse.json({ success: true });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }
 }

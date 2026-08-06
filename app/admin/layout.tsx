@@ -4,10 +4,10 @@ import React, { ReactNode, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
-import { supabase } from '@/lib/supabaseClient';
+import { isSupabaseConfigured, supabase } from '@/lib/supabaseClient';
 import { 
-  LayoutDashboard, Users, Settings, Award, 
-  ListOrdered, Eye, LogOut, ShieldCheck, BookOpen 
+  LayoutDashboard, Users, Settings,
+  ListOrdered, Eye, LogOut, BookOpen, CalendarCheck2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -18,6 +18,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     async function fetchChallengeImage() {
+      if (!isSupabaseConfigured) return;
       try {
         const { data } = await supabase
           .from('app_settings')
@@ -36,6 +37,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   const menuItems = [
     { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+    { name: 'Weekly Plan', href: '/admin/weekly-plan', icon: CalendarCheck2 },
     { name: 'Audiobooks', href: '/admin/audiobooks', icon: BookOpen },
     { name: 'Books', href: '/admin/books', icon: BookOpen },
     { name: 'Users', href: '/admin/users', icon: Users },
@@ -45,10 +47,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-  useEffect(() => {
-    setIsMobileMenuOpen(false);
-  }, [pathname]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row">
@@ -199,6 +197,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                     <Link
                       key={item.href}
                       href={item.href}
+                      onClick={() => setIsMobileMenuOpen(false)}
                       className={`
                         flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold text-sm
                         ${isActive 

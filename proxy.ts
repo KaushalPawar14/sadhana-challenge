@@ -1,139 +1,84 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({
-    request: {
-      headers: request.headers,
+  let response = NextResponse.next({ request });
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const publishableKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !publishableKey) return response;
+
+  const supabase = createServerClient(supabaseUrl, publishableKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value }) =>
+          request.cookies.set(name, value),
+        );
+        response = NextResponse.next({ request });
+        cookiesToSet.forEach(({ name, value, options }) =>
+          response.cookies.set(name, value, options),
+        );
+      },
     },
   });
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value;
-        },
-        set(name: string, value: string, options: CookieOptions) {
-          request.cookies.set({
-            name,
-            value,
-            ...options,
-          });
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          });
-          response.cookies.set({
-            name,
-            value,
-            ...options,
-          });
-        },
-        remove(name: string, options: CookieOptions) {
-          request.cookies.set({
-            name,
-            value: '',
-            ...options,
-          });
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          });
-          response.cookies.set({
-            name,
-            value: '',
-            ...options,
-          });
-        },
-      },
-    }
-  );
-
-  // UPDATED: Using getUser() for maximum security
-  const { data: { user } } = await supabase.auth.getUser();
-
+  const { data } = await supabase.auth.getUser();
+  const user = data.user;
   const url = request.nextUrl.clone();
 
-  // Public routes (except root which we handle below)
-  if (url.pathname.startsWith('/auth/')) return response;
-
-  // Root login page
-  if (url.pathname === '/') {
-    if (user) {
-      // If logged in, redirect to appropriate place
-      const { data: isAdmin } = await supabase.rpc('is_admin', {
-        user_email: user.email // UPDATED reference
-      });
-      if (isAdmin) {
-        url.pathname = '/admin';
-      } else {
-        const { data: profile } = await supabase
-          .from('users')
-          .select('is_onboarded')
-          .eq('id', user.id) // UPDATED reference
-          .single();
-        url.pathname = profile?.is_onboarded ? '/leaderboard' : '/onboarding';
-      }
-      return NextResponse.redirect(url);
-    }
+  if (url.pathname.startsWith('/auth/') || url.pathname.startsWith('/api/')) {
     return response;
   }
 
-  // Protected routes
-  if (!user) { // UPDATED reference
+  if (!user) {
+    if (url.pathname === '/') return response;
     url.pathname = '/';
     return NextResponse.redirect(url);
   }
 
-  // Admin routes
-  if (url.pathname.startsWith('/admin')) {
-    const { data: isAdmin } = await supabase.rpc('is_admin', {
-      user_email: user.email // UPDATED reference
-    });
-    if (!isAdmin) {
-      url.pathname = '/leaderboard';
+  const { data: profile } = await supabase
+    .from('users')
+    .select('role,is_onboarded')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  const role = profile?.role ?? 'student';
+  if (url.pathname === '/') {
+    url.pathname =
+      role === 'hod'
+        ? '/admin'
+        : role === 'guide'
+          ? '/admin/weekly-plan'
+          : profile?.is_onboarded
+            ? '/leaderboard'
+            : '/onboarding';
+    return NextResponse.redirect(url);
+  }
+
+  if (url.pathname.startsWith('/admin') && role === 'student') {
+    url.pathname = profile?.is_onboarded ? '/leaderboard' : '/onboarding';
+    return NextResponse.redirect(url);
+  }
+
+  if (url.pathname.startsWith('/admin') && role === 'guide') {
+    const guideRoutes = ['/admin/weekly-plan'];
+    if (!guideRoutes.some((route) => url.pathname.startsWith(route))) {
+      url.pathname = '/admin/weekly-plan';
       return NextResponse.redirect(url);
     }
   }
 
-  // Check onboarding status for all other pages (skip static assets, api routes, admin pages, and onboarding itself)
-  if (
-    !url.pathname.startsWith('/admin') &&
-    !url.pathname.startsWith('/api') &&
-    !url.pathname.startsWith('/auth') &&
-    url.pathname !== '/onboarding'
-  ) {
-    const { data: isAdmin } = await supabase.rpc('is_admin', {
-      user_email: user.email
-    });
-
-    if (!isAdmin) {
-      const { data: profile } = await supabase
-        .from('users')
-        .select('is_onboarded')
-        .eq('id', user.id)
-        .single();
-
-      if (!profile?.is_onboarded) {
-        url.pathname = '/onboarding';
-        return NextResponse.redirect(url);
-      }
+  if (role === 'student') {
+    if (!profile?.is_onboarded && url.pathname !== '/onboarding') {
+      url.pathname = '/onboarding';
+      return NextResponse.redirect(url);
     }
-  }
-
-  // Onboarding route
-  if (url.pathname === '/onboarding') {
-    const { data: profile } = await supabase
-      .from('users')
-      .select('is_onboarded')
-      .eq('id', user.id) // UPDATED reference
-      .single();
-    if (profile?.is_onboarded) {
+    if (profile?.is_onboarded && url.pathname === '/onboarding') {
       url.pathname = '/leaderboard';
       return NextResponse.redirect(url);
     }
@@ -143,14 +88,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * Feel free to modify this pattern to include more paths.
-     */
-    '/((?!_next/static|_next/image|favicon.ico).*)',
-  ],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };

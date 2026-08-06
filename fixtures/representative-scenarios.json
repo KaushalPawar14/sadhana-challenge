@@ -1,0 +1,61 @@
+{
+  "notice": "Synthetic records only. Names, IDs, institutions and activity are invented for product testing and must never be treated as real students.",
+  "academic_year": "2026-27",
+  "quarter": 1,
+  "students": [
+    {
+      "id": "fixture-aarav",
+      "display_name": "Aarav P.",
+      "cohort": "SVNIT first year",
+      "lit": { "listening": 4, "interest": 5, "time": 2, "confidence": 3, "interactions_since_review": 2 },
+      "abcde": { "association_minutes": 68, "book_progress_percent": 32, "chanting_rounds": 6, "service_status": "trial", "expedition_status": "interested" },
+      "condition": "paused_reader",
+      "expected_action": "personalized_book_motivation"
+    },
+    {
+      "id": "fixture-harsh",
+      "display_name": "Harsh M.",
+      "cohort": "IIIT Surat first year",
+      "lit": { "listening": 4, "interest": 4, "time": 3, "confidence": 3, "interactions_since_review": 3 },
+      "abcde": { "association_minutes": 0, "book_progress_percent": 60, "chanting_rounds": 4, "service_status": "none", "expedition_status": "unknown" },
+      "condition": "association_overdue",
+      "expected_action": "offer_two_video_slots"
+    },
+    {
+      "id": "fixture-manav",
+      "display_name": "Manav S.",
+      "cohort": "Local · SCET",
+      "lit": { "listening": 3, "interest": 3, "time": 5, "confidence": 2, "interactions_since_review": 1 },
+      "abcde": { "association_minutes": 45, "book_progress_percent": 15, "chanting_rounds": 2, "service_status": "ready", "expedition_status": "registered" },
+      "condition": "service_ready",
+      "expected_action": "offer_bounded_design_service"
+    },
+    {
+      "id": "fixture-rohan",
+      "display_name": "Rohan K.",
+      "cohort": "SVNIT second year",
+      "lit": { "listening": 5, "interest": 5, "time": 4, "confidence": 4, "interactions_since_review": 3 },
+      "abcde": { "association_minutes": 130, "book_progress_percent": 100, "chanting_rounds": 16, "service_status": "consistent", "expedition_status": "attended" },
+      "condition": "potential_rdua_leader",
+      "expected_action": "guide_judgment_trial_circle"
+    },
+    {
+      "id": "fixture-neel",
+      "display_name": "Neel D.",
+      "cohort": "Local · college pending",
+      "lit": { "listening": 2, "interest": 2, "time": 1, "confidence": 2, "interactions_since_review": 1 },
+      "abcde": { "association_minutes": 20, "book_progress_percent": 0, "chanting_rounds": 0, "service_status": "none", "expedition_status": "post_trip_negative" },
+      "condition": "reduced_participation_after_trip",
+      "expected_action": "warm_low_pressure_contact"
+    },
+    {
+      "id": "fixture-vivaan",
+      "display_name": "Vivaan R.",
+      "cohort": "SVNIT first year",
+      "lit": { "listening": 3, "interest": 4, "time": 3, "confidence": 1, "interactions_since_review": 0 },
+      "abcde": { "association_minutes": 0, "book_progress_percent": 0, "chanting_rounds": 1, "service_status": "unknown", "expedition_status": "unknown" },
+      "condition": "new_joiner",
+      "expected_action": "observe_and_build_relationship"
+    }
+  ]
+}
