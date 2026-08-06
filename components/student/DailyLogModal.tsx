@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Trophy, Calendar, ChevronRight } from 'lucide-react';
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabaseClient';
 import { useAuthStore } from '@/store/authStore';
 import { calculatePoints, updateStreak, checkAwardUnlocks, CalculationResult } from '@/lib/pointsEngine';
 import { toast } from 'react-hot-toast';
@@ -17,12 +17,6 @@ interface DailyLogModalProps {
 
 export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps) => {
   const { user } = useAuthStore();
-
-  // Initialize the browser client so it passes authentication cookies
-  const [supabase] = useState(() => createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  ));
 
   const [step, setStep] = useState<'form' | 'summary'>('form');
   const [isLoading, setIsLoading] = useState(false);

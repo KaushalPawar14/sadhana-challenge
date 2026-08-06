@@ -2,18 +2,13 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-// 1. Import the SSR browser client instead of your local lib
-import { createBrowserClient } from '@supabase/ssr';
 import { LogIn } from 'lucide-react';
+import Link from 'next/link';
+import { isSupabaseConfigured, supabase } from '@/lib/supabaseClient';
 
 export default function LoginPage() {
-  // 2. Initialize the SSR client inside the component
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
   const handleGoogleLogin = async () => {
+    if (!isSupabaseConfigured) return;
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -51,7 +46,7 @@ export default function LoginPage() {
           </motion.div>
 
           <h1 className="text-4xl font-black text-white mb-3 tracking-tight">
-            Sadhana App
+            FOLK Surat
           </h1>
           <p className="text-orange-200 font-medium mb-12 opacity-90">
             Illuminate your spiritual journey
@@ -59,6 +54,7 @@ export default function LoginPage() {
 
           <button
             onClick={handleGoogleLogin}
+            disabled={!isSupabaseConfigured}
             className="w-full group relative flex items-center justify-center gap-3 bg-[#FFD700] hover:bg-[#FFC400] text-[#4A148C] py-4 px-6 rounded-2xl font-bold text-lg transition-all duration-300 transform hover:-translate-y-1 hover:shadow-[0_0_30px_rgba(255,215,0,0.4)] overflow-hidden"
           >
             <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12" />
@@ -66,8 +62,19 @@ export default function LoginPage() {
             <span className="relative z-10">Continue with Google</span>
           </button>
 
+          {!isSupabaseConfigured && (
+            <div className="mt-5 rounded-2xl border border-white/20 bg-white/10 p-4 text-left">
+              <p className="text-xs font-bold leading-5 text-white/75">
+                Google OAuth credentials are not present in this local build. The private dashboard preview remains available with synthetic data.
+              </p>
+              <Link href="/admin" className="mt-3 inline-flex text-sm font-black text-yellow-300 underline underline-offset-4">
+                Open private MVP preview
+              </Link>
+            </div>
+          )}
+
           <p className="mt-8 text-xs text-white/40 uppercase tracking-[0.2em]">
-            26-Day Spiritual Challenge
+            Your daily spiritual-growth companion
           </p>
         </div>
       </motion.div>

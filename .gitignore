@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local Prabhupada corpus and generated RAG artifacts
+/local-data/prabhupada-corpus/
+/rag-output/prabhupada-local/

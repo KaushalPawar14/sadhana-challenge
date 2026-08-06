@@ -1,22 +1,21 @@
 'use client';
 
 import { useEffect, useState, ReactNode } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
 import { useAuthStore } from '@/store/authStore';
+import { isSupabaseConfigured, supabase } from '@/lib/supabaseClient';
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isInitializing, setIsInitializing] = useState(true);
   const { setUser, setIsAdmin, setIsOnboarded } = useAuthStore();
 
-  const [supabase] = useState(() => createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  ));
-
   useEffect(() => {
     console.log("🔴 DEBUG: AuthProvider Hook Started");
 
     const initializeAuth = async () => {
+      if (!isSupabaseConfigured) {
+        setIsInitializing(false);
+        return;
+      }
       try {
         console.log("🔴 DEBUG 1: Fetching user from server cookies...");
         const { data: { user }, error } = await supabase.auth.getUser();
