@@ -826,7 +826,7 @@ export default function LeaderboardPage() {
                     ⚡ Incremental Streak Multiplier (Game Changer!)
                   </h3>
                   <p className="text-xs text-slate-600 font-bold leading-relaxed mb-2">
-                    Every daily report you submit increases your point multiplier by 0.25x (25%):
+                    Every daily report you submit increases your point multiplier by 0.50x (50%):
                   </p>
                   <ul className="space-y-2 text-xs text-slate-600 font-bold leading-relaxed">
                     <li className="flex items-start gap-2">
@@ -838,19 +838,19 @@ export default function LeaderboardPage() {
                     <li className="flex items-start gap-2">
                       <span className="text-amber-500">🔥</span>
                       <span>
-                        <strong className="text-slate-700">Day 2:</strong> 1.25x (125% points)
+                        <strong className="text-slate-700">Day 2:</strong> 1.50x (150% points)
                       </span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-amber-500">🔥</span>
                       <span>
-                        <strong className="text-slate-700">Day 3:</strong> 1.50x (150% points)
+                        <strong className="text-slate-700">Day 3:</strong> 2.00x (200% points)
                       </span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-indigo-500">📈</span>
                       <span>
-                        <strong className="text-slate-700">Progression:</strong> Multiplier formula = <strong className="text-indigo-600 font-extrabold">1 + (Streak - 1) × 0.25</strong>.
+                        <strong className="text-slate-700">Progression:</strong> Multiplier formula = <strong className="text-indigo-600 font-extrabold">1 + (Streak - 1) × 0.50</strong>.
                       </span>
                     </li>
                   </ul>

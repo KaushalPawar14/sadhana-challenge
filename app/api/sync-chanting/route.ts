@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
             points_per_chanting: 1,
             points_per_reading: 1,
             points_per_hearing: 1,
-            streak_bonus_multiplier: 0.25
+            streak_bonus_multiplier: 0.5
           });
 
           currentTotalPoints += ptsRes.total_points;
