@@ -24,6 +24,7 @@ export default function LeaderboardPage() {
   const [liveListened, setLiveListened] = useState<any[]>([]);
   const [quizSubmissions, setQuizSubmissions] = useState<any[]>([]);
   const [isRulesOpen, setIsRulesOpen] = useState(false);
+  const [logsTodayCount, setLogsTodayCount] = useState<number>(0);
 
   // Stable client setup to prevent warnings and auth drops
   const [supabase] = useState(() => createBrowserClient(
@@ -56,6 +57,14 @@ export default function LeaderboardPage() {
       .order('total_points', { ascending: false });
 
     setUsers(userData || []);
+
+    // Fetch Today's log count
+    const todayStr = new Date().toISOString().split('T')[0];
+    const { count: todayCount } = await supabase
+      .from('activity_logs')
+      .select('id', { count: 'exact', head: true })
+      .eq('log_date', todayStr);
+    setLogsTodayCount(todayCount || 0);
 
     // Fetch Latest Live Activity Logs from activity_logs table (direct database fetch)
     const { data: latestLogs } = await supabase
@@ -496,6 +505,28 @@ export default function LeaderboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left Column: Leaderboard List */}
         <div className="lg:col-span-7 xl:col-span-8 space-y-3">
+          {/* Today's Reporting Summary Banner */}
+          <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-amber-500/10 text-amber-700 rounded-xl flex items-center justify-center font-black text-base shadow-2xs">
+                📊
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-amber-800 uppercase tracking-widest leading-none mb-1">Today's Sadhana Reporting</p>
+                <p className="text-xs md:text-sm font-bold text-slate-700 leading-tight">
+                  {logsTodayCount === 0 ? (
+                    <span>No participants out of <span className="font-extrabold text-amber-900">{users.length}</span> have filled their report today</span>
+                  ) : (
+                    <span><span className="font-extrabold text-emerald-600">{logsTodayCount}</span> out of <span className="font-extrabold text-amber-900">{users.length}</span> participants filled today's report</span>
+                  )}
+                </p>
+              </div>
+            </div>
+            <span className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full bg-white/80 border border-amber-200 text-amber-800 shadow-2xs whitespace-nowrap">
+              {users.length} Participants
+            </span>
+          </div>
+
           <div className="flex items-center gap-2 mb-2 px-1">
             <span className="text-lg">🏆</span>
             <h2 className="text-lg font-black text-slate-800 tracking-tight">Leaderboard Standings</h2>
