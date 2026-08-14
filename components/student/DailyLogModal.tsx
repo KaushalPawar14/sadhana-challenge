@@ -161,8 +161,8 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
       return;
     }
 
-    if (formData.chanting_rounds === 0 && formData.reading_minutes === 0) {
-      if (!confirm("Logging zero for chanting and reading? That's okay — consistency matters. Confirm?")) return;
+    if (formData.chanting_rounds === 0) {
+      if (!confirm("Logging 0 rounds for chanting today? Confirm submission?")) return;
     }
 
     setIsLoading(true);
@@ -352,31 +352,28 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
 
                 {unfulfilledDates.length > 0 && (
                   <>
-                    {[
-                      { label: 'Chanting Rounds of yesterday', name: 'chanting_rounds', target: userProfile?.target_chanting, icon: '📿' },
-                      { label: 'Reading Minutes of yesterday', name: 'reading_minutes', target: userProfile?.target_reading, icon: '📖' },
-                    ].map((field) => (
-                      <div key={field.name}>
-                        <div className="flex justify-between items-end mb-2">
-                          <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                            <span>{field.icon}</span> {field.label}
-                          </label>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Goal: {field.target}</span>
-                        </div>
-                        <input
-                          type="number"
-                          name={field.name}
-                          value={(formData as any)[field.name]}
-                          onChange={handleInputChange}
-                          className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-indigo-500 outline-none font-bold text-lg text-slate-800"
-                        />
+                    <div>
+                      <div className="flex justify-between items-end mb-2">
+                        <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                          <span>📿</span> Chanting Rounds
+                        </label>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Target: -</span>
                       </div>
-                    ))}
+                      <input
+                        type="number"
+                        name="chanting_rounds"
+                        min="0"
+                        value={formData.chanting_rounds}
+                        onChange={handleInputChange}
+                        className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-indigo-500 outline-none font-bold text-lg text-slate-800"
+                        placeholder="Enter rounds completed"
+                      />
+                    </div>
 
                     <button
                       type="submit"
                       disabled={isLoading}
-                      className="w-full bg-indigo-600 text-white py-5 rounded-[1.5rem] font-black text-lg hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 flex items-center justify-center gap-3 mt-4 disabled:opacity-50"
+                      className="w-full bg-indigo-600 text-white py-5 rounded-[1.5rem] font-black text-lg hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 flex items-center justify-center gap-3 mt-4 disabled:opacity-50 cursor-pointer"
                     >
                       {isLoading ? 'Saving...' : (
                         <>Submit Daily Log <ChevronRight size={20} /></>
@@ -384,7 +381,7 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
                     </button>
 
                     <p className="text-center text-[10px] text-slate-400 font-medium uppercase tracking-widest">
-                      Bonus points are awarded by the admin!
+                      1 Round = 1 Point • Streak Multipliers Active 🔥
                     </p>
                   </>
                 )}

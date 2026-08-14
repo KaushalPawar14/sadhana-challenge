@@ -449,7 +449,7 @@ export default function LeaderboardPage() {
                 Ends: {formatLocalDate(settings.challenge_end_date)}
               </span>
               <button
-                onClick={() => toast.error("Rules are under update!")}
+                onClick={() => setIsRulesOpen(true)}
                 className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 hover:bg-amber-100/70 border border-amber-100 text-amber-700 rounded-full text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95"
               >
                 📜 Rules & Score Math
@@ -485,8 +485,7 @@ export default function LeaderboardPage() {
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              onClick={() => toast.error("Log activity is under update!")}
-              // onClick={() => setIsLogModalOpen(true)}
+              onClick={() => setIsLogModalOpen(true)}
               className="bg-orange-500 hover:bg-orange-600 text-white p-3.5 rounded-2xl flex items-center justify-center gap-2 flex-1 md:flex-initial min-w-[130px] shadow-md shadow-orange-500/10 border border-orange-400/20 transition-all font-bold text-xs md:text-sm cursor-pointer whitespace-nowrap"
             >
               <Plus size={16} />
@@ -787,31 +786,25 @@ export default function LeaderboardPage() {
                 {/* Daily Goals & Math formulas */}
                 <div className="bg-gradient-to-br from-indigo-50/50 to-indigo-100/10 p-4 rounded-2xl border border-indigo-100/50">
                   <h3 className="text-xs font-black text-indigo-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    🧮 Daily Score Calculations
+                    🧮 Chanting Challenge Rules & Points Engine
                   </h3>
                   <ul className="space-y-2 text-xs text-slate-600 font-bold leading-relaxed">
                     <li className="flex items-start gap-2">
                       <span className="text-orange-500 font-black mt-0.5">•</span>
                       <span>
-                        <strong className="text-slate-700">Chanting Score:</strong> (Daily Rounds Completed ÷ Your Custom Goal) × 10.
+                        <strong className="text-slate-700">1 Round = 1 Point:</strong> Each completed chanting round gives 1 base point.
                       </span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <span className="text-teal-500 font-black mt-0.5">•</span>
+                      <span className="text-slate-400 font-black mt-0.5">•</span>
                       <span>
-                        <strong className="text-slate-700">Book Reading Score:</strong> (Daily Minutes Read ÷ Your Custom Goal) × 10.
+                        <strong className="text-slate-700">Audiobooks & Quizzes:</strong> Audiobooks & quizzes yield 0 points during this cycle.
                       </span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-indigo-500 font-black mt-0.5">•</span>
                       <span>
-                        <strong className="text-slate-700">Admin Bonuses:</strong> Awarded manually when you submit reports to your admin on WhatsApp (e.g., wake early, online session presence).
-                      </span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="text-violet-500 font-black mt-0.5">•</span>
-                      <span>
-                        <strong className="text-slate-700">Spiritual Quizzes:</strong> Earn +5 points for each correct answer! You must watch at least 80% of the podcast to unlock its quiz; without doing so, it cannot be attempted.
+                        <strong className="text-slate-700">Admin Bonus:</strong> Extra points can be granted by campaign admins.
                       </span>
                     </li>
                   </ul>
@@ -820,28 +813,34 @@ export default function LeaderboardPage() {
                 {/* The Game Changer: Streak Bonus */}
                 <div className="bg-gradient-to-br from-orange-50/50 to-orange-100/10 p-4 rounded-2xl border border-orange-100/50">
                   <h3 className="text-xs font-black text-orange-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    ⚡ The Streak Bonus (Game Changer!)
+                    ⚡ Incremental Streak Multiplier (Game Changer!)
                   </h3>
                   <p className="text-xs text-slate-600 font-bold leading-relaxed mb-2">
-                    Streaks are the ultimate multiplier in this campaign:
+                    Every daily report you submit increases your point multiplier by 0.25x (25%):
                   </p>
                   <ul className="space-y-2 text-xs text-slate-600 font-bold leading-relaxed">
                     <li className="flex items-start gap-2">
                       <span className="text-amber-500">🔥</span>
                       <span>
-                        <strong className="text-slate-700">Strict Maintenance:</strong> A streak is maintained <strong className="text-slate-800 underline">only</strong> when you completely finish your daily goal. Otherwise, the streak breaks.
+                        <strong className="text-slate-700">Day 1:</strong> 1.0x (Base points)
                       </span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <span className="text-rose-500">🔒</span>
+                      <span className="text-amber-500">🔥</span>
                       <span>
-                        <strong className="text-slate-700">Locked Commitments:</strong> Once your daily commitment is set, <strong className="text-slate-800 underline">you cannot decrease it</strong>!
+                        <strong className="text-slate-700">Day 2:</strong> 1.25x (125% points)
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-amber-500">🔥</span>
+                      <span>
+                        <strong className="text-slate-700">Day 3:</strong> 1.50x (150% points)
                       </span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-indigo-500">📈</span>
                       <span>
-                        <strong className="text-slate-700">Multiplier Math:</strong> Your daily score receives a multiplier bonus of <strong className="text-indigo-600 font-extrabold">10% per active streak day</strong> (e.g., a 3-day streak adds a <strong className="text-indigo-600 font-extrabold">30% bonus</strong> to that day's score!).
+                        <strong className="text-slate-700">Progression:</strong> Multiplier formula = <strong className="text-indigo-600 font-extrabold">1 + (Streak - 1) × 0.25</strong>.
                       </span>
                     </li>
                   </ul>
@@ -851,15 +850,15 @@ export default function LeaderboardPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-amber-50/30 border border-amber-100/50 p-3 rounded-2xl">
                     <h4 className="text-[10px] font-black text-amber-700 uppercase tracking-wider mb-1 flex items-center gap-1">
-                      🛡️ Streak Shield
+                      🛡️ Streak Shield Protection
                     </h4>
                     <p className="text-[9px] text-slate-500 font-bold leading-snug">
-                      Missed a day? A Shield preserves your streak and keeps your flame burning! Use it wisely if a day is missed out.
+                      If you miss submitting a report for 1 day, your 1 available Streak Shield is automatically used to protect your streak. If you miss a 2nd consecutive day without filling a report (and 0 shields left), your streak resets to 0.
                     </p>
                   </div>
                   <div className="bg-emerald-50/30 border border-emerald-100/50 p-3 rounded-2xl">
                     <h4 className="text-[10px] font-black text-emerald-700 uppercase tracking-wider mb-1 flex items-center gap-1">
-                      🏆 Awards
+                      🏆 Awards & Badges
                     </h4>
                     <p className="text-[9px] text-slate-500 font-bold leading-snug">
                       Milestones and automated badges achieved on your path. Check them out under the Awards tab!
