@@ -221,7 +221,7 @@ export const UserProfileModal = ({ userId, onClose }: UserProfileModalProps) => 
                                   Chanting: {chantingVal} pts
                                 </p>
                               )}
-                              {Number(readingVal) > 0 && (
+                              {/* {Number(readingVal) > 0 && (
                                 <p className="text-[11px] font-bold text-teal-600 flex items-center gap-1.5 mb-1">
                                   <span className="w-2 h-2 rounded-full bg-teal-500 inline-block" />
                                   Reading: {readingVal} pts
@@ -252,17 +252,17 @@ export const UserProfileModal = ({ userId, onClose }: UserProfileModalProps) => 
                                     </p>
                                   )}
                                 </div>
-                              )}
+                              )} */}
                             </div>
                           );
                         }
                         return null;
                       }}
                     />
-                    <Bar dataKey="Chanting" stackId="a" fill="#f97316" />
-                    <Bar dataKey="Reading" stackId="a" fill="#14b8a6" />
-                    <Bar dataKey="Bonus" stackId="a" fill="#6366f1" />
-                    <Bar dataKey="Quiz" stackId="a" fill="#ec4899" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Chanting" stackId="a" fill="#f97316" radius={[4, 4, 0, 0]} />
+                    {/* <Bar dataKey="Reading" stackId="a" fill="#14b8a6" /> */}
+                    {/* <Bar dataKey="Bonus" stackId="a" fill="#6366f1" /> */}
+                    {/* <Bar dataKey="Quiz" stackId="a" fill="#ec4899" radius={[4, 4, 0, 0]} /> */}
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -276,15 +276,13 @@ export const UserProfileModal = ({ userId, onClose }: UserProfileModalProps) => 
                   </h4>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 bg-slate-50/50 p-4 rounded-2xl border border-slate-100/50">
-                  <div className="text-center border-r border-slate-200/50">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Chanting</p>
-                    <p className="text-base font-black text-slate-800">{profile.target_chanting} Rounds</p>
-                  </div>
-                  <div className="text-center">
+                <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100/50 text-center">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Chanting</p>
+                  <p className="text-base font-black text-slate-800">{profile.target_chanting} Rounds</p>
+                  {/* <div className="text-center">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Reading</p>
                     <p className="text-base font-black text-slate-800">{profile.target_reading} Min</p>
-                  </div>
+                  </div> */}
                 </div>
               </div>
 

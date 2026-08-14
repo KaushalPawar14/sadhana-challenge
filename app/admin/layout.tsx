@@ -36,8 +36,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   const menuItems = [
     { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
-    { name: 'Audiobooks', href: '/admin/audiobooks', icon: BookOpen },
-    { name: 'Books', href: '/admin/books', icon: BookOpen },
+    // { name: 'Audiobooks', href: '/admin/audiobooks', icon: BookOpen },
+    // { name: 'Books', href: '/admin/books', icon: BookOpen },
     { name: 'Users', href: '/admin/users', icon: Users },
     { name: 'Settings', href: '/admin/settings', icon: Settings },
     { name: 'Logs', href: '/admin/logs', icon: ListOrdered },

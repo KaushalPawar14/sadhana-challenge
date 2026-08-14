@@ -514,7 +514,7 @@ export default function LeaderboardPage() {
                 <p className="text-[10px] font-black text-amber-800 uppercase tracking-widest leading-none mb-1">Today's Sadhana Reporting</p>
                 <p className="text-xs md:text-sm font-bold text-slate-700 leading-tight">
                   {logsTodayCount === 0 ? (
-                    <span>No participants out of <span className="font-extrabold text-amber-900">{users.length}</span> have filled their report today</span>
+                    <span>Start filling your report today! 🎯</span>
                   ) : (
                     <span><span className="font-extrabold text-emerald-600">{logsTodayCount}</span> out of <span className="font-extrabold text-amber-900">{users.length}</span> participants filled today's report</span>
                   )}
