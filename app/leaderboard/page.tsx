@@ -33,6 +33,16 @@ export default function LeaderboardPage() {
   ));
 
   useEffect(() => {
+    // Trigger auto-fulfillment check for missing logs using recorded in-app chanting
+    fetch('/api/sync-chanting')
+      .then(res => res.json())
+      .then(data => {
+        if (data.autoFulfilledDates && data.autoFulfilledDates.length > 0) {
+          toast.success(`🎉 Auto-fulfilled missing report for ${data.autoFulfilledDates.join(', ')} from your recorded chanting!`);
+        }
+      })
+      .catch(err => console.error('Auto-sync on leaderboard mount failed:', err));
+
     fetchData();
     const subscription = subscribeToUsers();
     return () => {

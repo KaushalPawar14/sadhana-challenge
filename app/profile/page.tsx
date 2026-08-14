@@ -373,10 +373,9 @@ export default function ProfilePage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-6">
             {[
               { label: 'Chanting', key: 'target_chanting', icon: '📿', unit: 'Rounds', color: 'bg-orange-50 text-orange-600' },
-              { label: 'Reading', key: 'target_reading', icon: '📖', unit: 'Minutes', color: 'bg-teal-50 text-teal-600' },
             ].map(item => (
               <div key={item.key} className={`p-6 rounded-3xl border border-slate-50 ${item.color.split(' ')[0]}`}>
                 <div className="flex items-center gap-3 mb-4">
@@ -413,7 +412,6 @@ export default function ProfilePage() {
           <div className="space-y-6">
             {[
               { label: 'Chanting', val: pointsBreakdown.chanting, color: 'bg-orange-500' },
-              { label: 'Reading', val: pointsBreakdown.reading, color: 'bg-teal-500' },
             ].map(item => (
               <div key={item.label}>
                 <div className="flex justify-between text-sm font-bold mb-2">

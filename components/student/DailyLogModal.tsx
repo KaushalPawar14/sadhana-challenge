@@ -128,9 +128,22 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
       }
       setLogDate(checkDateStr);
 
-      // Default form data to personal targets
+      // Fetch in-app chanting rounds for the selected date if present
+      let defaultChantingRounds = profile?.target_chanting || 0;
+      const { data: chantLog } = await supabase
+        .from('user_chanting_logs')
+        .select('rounds_chanted')
+        .eq('user_id', user?.id)
+        .eq('log_date', checkDateStr)
+        .maybeSingle();
+
+      if (chantLog?.rounds_chanted && chantLog.rounds_chanted > 0) {
+        defaultChantingRounds = chantLog.rounds_chanted;
+      }
+
+      // Default form data to personal targets or recorded in-app chanting
       setFormData({
-        chanting_rounds: profile?.target_chanting || 0,
+        chanting_rounds: defaultChantingRounds,
         reading_minutes: profile?.target_reading || 0,
         hearing_minutes: 0
       });
@@ -140,6 +153,27 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
       setIsFetching(false);
     }
   };
+
+  // Sync chanting rounds pre-fill whenever selected logDate changes
+  useEffect(() => {
+    if (!user?.id || !logDate) return;
+    const fetchChantingForDate = async () => {
+      const { data: chantLog } = await supabase
+        .from('user_chanting_logs')
+        .select('rounds_chanted')
+        .eq('user_id', user.id)
+        .eq('log_date', logDate)
+        .maybeSingle();
+
+      if (chantLog?.rounds_chanted && chantLog.rounds_chanted > 0) {
+        setFormData(prev => ({
+          ...prev,
+          chanting_rounds: chantLog.rounds_chanted
+        }));
+      }
+    };
+    fetchChantingForDate();
+  }, [logDate, user?.id, supabase]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;

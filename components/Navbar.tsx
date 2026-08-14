@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
-import { LogOut, Trophy, User, Award, LayoutDashboard, Sparkles, Radio, BookOpen } from 'lucide-react';
+import { LogOut, Trophy, User, Award, LayoutDashboard, Sparkles, Radio, BookOpen, Flame } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 
@@ -45,6 +45,7 @@ export const Navbar = () => {
 
   const navItems: Array<{ name: string; href: string; icon: any; isUpcoming?: boolean }> = [
     { name: 'Leaderboard', href: '/leaderboard', icon: Trophy },
+    { name: 'Chanting', href: '/chanting', icon: Flame },
     { name: 'Profile', href: '/profile', icon: User },
     { name: 'Awards', href: '/awards', icon: Award },
     // { name: 'Podcast', href: '/podcast', icon: Radio },

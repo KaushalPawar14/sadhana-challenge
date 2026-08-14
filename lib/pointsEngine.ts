@@ -23,9 +23,9 @@ export function calculatePoints(input: ActivityInput): CalculationResult {
   // 1 round = 1 point
   const base_points = input.chanting_rounds;
 
-  // Streak Multiplier: Day 1 = 1x, Day 2 = 1.25x, Day 3 = 1.5x, etc.
+  // Streak Multiplier: Day 1 = 1x, Day 2 = 1.5x, Day 3 = 2x, etc.
   const effectiveStreak = Math.max(1, input.streak_count || 1);
-  const streakMultiplier = 1 + (effectiveStreak - 1) * 0.25;
+  const streakMultiplier = 1 + (effectiveStreak - 1) * 0.5;
 
   const total_points = Math.round(base_points * streakMultiplier);
   const streak_bonus = total_points - base_points;
@@ -91,7 +91,7 @@ export function updateStreak(
 
   const last = new Date(lastLogDate);
   const today = new Date(todayDate);
-  
+
   // Normalize dates to midnight for comparison
   last.setHours(0, 0, 0, 0);
   today.setHours(0, 0, 0, 0);
