@@ -27,6 +27,8 @@ export default function ChantingPage() {
   const [hapticsEnabled, setHapticsEnabled] = useState<boolean>(true);
   const [isAnimating, setIsAnimating] = useState<boolean>(false);
 
+  const [isInfoModalOpen, setIsInfoModalOpen] = useState<boolean>(false);
+
   const getTodayStr = () => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -231,8 +233,8 @@ export default function ChantingPage() {
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto min-h-screen bg-slate-50/30">
       
-      {/* Top Header & Theme Switcher */}
-      <div className="flex items-center justify-between gap-4 mb-6">
+      {/* Top Header & Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight flex items-center gap-2">
             <span>📿</span> Digital Japa Counter
@@ -241,47 +243,31 @@ export default function ChantingPage() {
             Focus your mind and complete your daily rounds
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setIsInfoModalOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 border border-amber-400/40 text-xs font-extrabold transition-all cursor-pointer shadow-sm active:scale-95"
+          >
+            <ShieldCheck className="text-amber-600 flex-shrink-0" size={16} />
+            <span>Rules & Protection</span>
+            <HelpCircle className="text-amber-500" size={14} />
+          </button>
+
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
-            className={`p-3 rounded-2xl border transition-all cursor-pointer ${
+            className={`p-2.5 rounded-2xl border transition-all cursor-pointer ${
               soundEnabled 
                 ? 'bg-amber-50 text-amber-700 border-amber-200 shadow-sm' 
                 : 'bg-slate-100 text-slate-400 border-slate-200'
             }`}
             title={soundEnabled ? "Mute sound" : "Enable sound"}
           >
-            {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
+            {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
           </button>
+
           <ThemeSwitcher />
         </div>
       </div>
-
-      {/* Mandatory Highlight & Fail-Safe Protection Banner */}
-      <motion.div 
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border-2 border-amber-400/40 rounded-3xl p-4 md:p-5 shadow-sm mb-8 relative overflow-hidden"
-      >
-        <div className="flex items-start gap-3.5">
-          <div className="w-10 h-10 bg-amber-500 text-white rounded-2xl flex items-center justify-center flex-shrink-0 shadow-md shadow-amber-500/20 font-black text-lg">
-            📜
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-xs font-black uppercase tracking-wider text-amber-900 mb-1 flex items-center gap-2">
-              <span>Chanting & Auto-Fulfillment Protection</span>
-              <span className="px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[9px] font-extrabold flex items-center gap-1">
-                <ShieldCheck size={10} /> Fail-Safe Active
-              </span>
-            </h3>
-            <p className="text-xs md:text-sm font-bold text-slate-700 leading-relaxed">
-              We recommend manually logging your activity in the <strong className="text-indigo-600">Leaderboard &gt; Log Activity</strong> tab. 
-              However, if you chant here but <strong className="text-amber-900 underline decoration-amber-400 underline-offset-2">forget to manually submit your report</strong> for the day, 
-              your in-app chanted rounds will <strong className="text-emerald-700 font-extrabold">automatically auto-fulfill your report</strong> at the end of the day so your streak is maintained and your Streak Shield is saved!
-            </p>
-          </div>
-        </div>
-      </motion.div>
 
       {/* Main Counter & Stats Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
@@ -426,6 +412,80 @@ export default function ChantingPage() {
         </div>
 
       </div>
+
+      {/* Rules & Auto-Fulfillment Protection Dialog Modal */}
+      <AnimatePresence>
+        {isInfoModalOpen && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsInfoModalOpen(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="relative w-full max-w-md bg-white rounded-[2.5rem] p-6 md:p-8 border border-slate-100 shadow-2xl z-10 overflow-hidden text-left"
+            >
+              <div className="absolute -top-12 -left-12 w-32 h-32 bg-amber-400/10 rounded-full blur-2xl pointer-events-none" />
+              
+              <div className="flex items-center justify-between mb-4 relative z-10">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 bg-amber-500 text-white rounded-xl flex items-center justify-center font-black text-base shadow-md shadow-amber-500/20">
+                    📜
+                  </div>
+                  <div>
+                    <h2 className="text-base font-black text-slate-900 tracking-tight">
+                      Chanting & Auto-Fulfillment
+                    </h2>
+                    <span className="inline-flex items-center gap-1 text-[9px] font-extrabold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/60">
+                      <ShieldCheck size={10} /> Fail-Safe Active
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsInfoModalOpen(false)}
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center font-black text-slate-400 hover:text-slate-600 transition-colors border border-slate-200 cursor-pointer text-xs"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-3.5 text-xs text-slate-600 font-semibold leading-relaxed relative z-10">
+                <p>
+                  This <strong>Digital Japa Counter</strong> helps you chant your daily rounds seamlessly within the web application.
+                </p>
+                <div className="bg-amber-50/70 border border-amber-200/70 p-4 rounded-2xl space-y-2">
+                  <h4 className="text-[11px] font-black text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
+                    <span>⚡ How Auto-Fulfillment Works</span>
+                  </h4>
+                  <p className="text-[11px] text-slate-700 leading-snug">
+                    We recommend manually logging your daily activity in the <strong className="text-indigo-600">Leaderboard &gt; Log Activity</strong> tab for official report tracking.
+                  </p>
+                  <p className="text-[11px] text-slate-700 leading-snug">
+                    However, if you chant using this counter but <strong className="text-amber-950 font-bold">forget to manually submit your daily report</strong>, your in-app chanted rounds will <strong className="text-emerald-700 font-extrabold">automatically auto-fulfill your daily report</strong> before the day ends!
+                  </p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/70 text-[11px] text-slate-500">
+                  💡 <strong>Streak Protection:</strong> Auto-fulfillment guarantees that your daily streak is maintained and your 🛡️ Streak Shield is never wasted on forgotten reports.
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end relative z-10">
+                <button
+                  onClick={() => setIsInfoModalOpen(false)}
+                  className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-2xl text-xs font-black shadow-lg shadow-orange-500/20 transition-all cursor-pointer"
+                >
+                  Got It!
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
