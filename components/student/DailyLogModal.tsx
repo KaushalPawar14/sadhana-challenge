@@ -28,6 +28,8 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
   const [isLoading, setIsLoading] = useState(false);
   const [isSavingCommitment, setIsSavingCommitment] = useState(false);
   const [commitmentRounds, setCommitmentRounds] = useState<number>(16);
+  const [commitmentInput, setCommitmentInput] = useState<string>('16');
+  const [commitmentError, setCommitmentError] = useState<string>('');
   const [logDate, setLogDate] = useState(new Date().toISOString().split('T')[0]);
   const [formData, setFormData] = useState({
     chanting_rounds: 0,
@@ -112,6 +114,7 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
       setUserProfile(profile);
       const targetChant = profile?.target_chanting || 16;
       setCommitmentRounds(targetChant);
+      setCommitmentInput(String(targetChant));
 
       // Fetch existing logs to find already completed dates
       const { data: existingLogs } = await supabase
@@ -168,22 +171,27 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
   const handleConfirmCommitment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    if (commitmentRounds <= 0) {
-      toast.error('Please enter a valid commitment (at least 1 round).');
+
+    const parsedRounds = parseInt(commitmentInput.trim(), 10);
+    if (!commitmentInput.trim() || isNaN(parsedRounds) || parsedRounds <= 0) {
+      setCommitmentError('Please enter a valid daily commitment (at least 1 round).');
       return;
     }
+
+    setCommitmentError('');
     setIsSavingCommitment(true);
     try {
       const { error } = await supabase
         .from('users')
-        .update({ target_chanting: commitmentRounds })
+        .update({ target_chanting: parsedRounds })
         .eq('id', user.id);
 
       if (error) throw error;
 
-      setUserProfile((prev: any) => ({ ...prev, target_chanting: commitmentRounds }));
+      setUserProfile((prev: any) => ({ ...prev, target_chanting: parsedRounds }));
+      setCommitmentRounds(parsedRounds);
       setStep('form');
-      toast.success(`Daily Chanting Commitment of ${commitmentRounds} rounds saved!`);
+      toast.success(`Daily Chanting Commitment of ${parsedRounds} rounds saved!`);
     } catch (err: any) {
       toast.error(err.message || 'Failed to save commitment');
     } finally {
@@ -383,27 +391,37 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
               </div>
               <div>
                 <h2 className="text-2xl font-black text-slate-800">Set Daily Commitment</h2>
-                <p className="text-slate-500 text-xs font-bold">First-Time Setup Required</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200">
+                    ⚡ One-Time Process
+                  </span>
+                  <span className="text-slate-500 text-xs font-bold">• First-Time Setup</span>
+                </div>
               </div>
             </div>
 
             <form onSubmit={handleConfirmCommitment} className="space-y-5">
               <div className="bg-gradient-to-br from-amber-50 to-orange-50/70 p-4.5 rounded-2xl border border-amber-200/80 text-amber-900 space-y-2.5">
-                <div className="flex items-center gap-2 font-black text-amber-800 text-xs uppercase tracking-wider">
+                <div className="flex items-center justify-between font-black text-amber-800 text-xs uppercase tracking-wider">
                   <span>📢 Leaderboard Scoring Rules</span>
+                  <span className="text-[10px] text-amber-700 font-bold bg-white/70 px-2 py-0.5 rounded-md border border-amber-200">
+                    Required
+                  </span>
                 </div>
                 <p className="text-xs font-semibold leading-relaxed text-slate-700">
-                  Your daily leaderboard score will be assigned based on your commitment:
+                  Your daily leaderboard score will be assigned based on your target commitment:
                 </p>
                 <div className="bg-white/90 p-3 rounded-xl border border-amber-200 text-center font-mono font-black text-slate-900 text-sm shadow-2xs">
                   Base Points = (Rounds Chanted / Commitment) × 10
                 </div>
-                <ul className="text-[11px] font-bold text-slate-600 space-y-1 pl-1">
-                  <li className="flex items-center gap-1.5">
-                    <span className="text-amber-500">✓</span> Completing {commitmentRounds}/{commitmentRounds} rounds = 10 Base Points.
+                <ul className="text-[11px] font-bold text-slate-600 space-y-1.5 pl-1">
+                  <li className="flex items-start gap-1.5">
+                    <span className="text-amber-500 font-black">✓</span>
+                    <span>Completing 100% of your target ({commitmentInput.trim() || '16'} rounds) = 10 Base Points.</span>
                   </li>
-                  <li className="flex items-center gap-1.5">
-                    <span className="text-amber-500">🔒</span> Once your first log is submitted, this commitment cannot be changed from the log window.
+                  <li className="flex items-start gap-1.5">
+                    <span className="text-amber-600 font-black">🔒</span>
+                    <span><strong>Notice:</strong> This is a <u>one-time setup</u>. Once saved, your target commitment cannot be changed from the log window.</span>
                   </li>
                 </ul>
               </div>
@@ -413,15 +431,29 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
                   Daily Chanting Rounds Commitment
                 </label>
                 <input
-                  type="number"
-                  min="1"
-                  max="108"
-                  value={commitmentRounds}
-                  onChange={(e) => setCommitmentRounds(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-slate-200 focus:border-amber-500 focus:bg-white outline-none font-black text-xl text-slate-800 transition-all text-center"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={commitmentInput}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9]/g, '');
+                    setCommitmentInput(val);
+                    if (commitmentError) setCommitmentError('');
+                  }}
+                  className={`w-full p-4 rounded-2xl bg-slate-50 border-2 outline-none font-black text-2xl text-slate-800 transition-all text-center ${
+                    commitmentError ? 'border-red-500 bg-red-50/20 focus:border-red-500' : 'border-slate-200 focus:border-amber-500 focus:bg-white'
+                  }`}
                   placeholder="e.g. 16"
-                  required
                 />
+                {commitmentError ? (
+                  <p className="mt-2 text-xs font-bold text-red-600 flex items-center justify-center gap-1.5 bg-red-50 p-2.5 rounded-xl border border-red-100">
+                    <span>⚠️</span> {commitmentError}
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-[11px] text-center font-medium text-slate-500">
+                    Clear the field and enter your daily target rounds (minimum 1).
+                  </p>
+                )}
               </div>
 
               <button
