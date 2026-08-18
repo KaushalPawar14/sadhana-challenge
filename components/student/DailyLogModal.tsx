@@ -384,50 +384,50 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
         </button>
 
         {step === 'commitment' ? (
-          <div className="p-8 md:p-10">
+          <div className="p-8 md:p-10 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors">
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center text-amber-600 text-xl shadow-xs">
+              <div className="w-12 h-12 bg-amber-100 dark:bg-amber-950/80 rounded-2xl flex items-center justify-center text-amber-600 dark:text-amber-400 text-xl shadow-xs">
                 📿
               </div>
               <div>
-                <h2 className="text-2xl font-black text-slate-800">Set Daily Commitment</h2>
+                <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100">Set Daily Commitment</h2>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/80 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-700/60">
                     ⚡ One-Time Process
                   </span>
-                  <span className="text-slate-500 text-xs font-bold">• First-Time Setup</span>
+                  <span className="text-slate-500 dark:text-slate-400 text-xs font-bold">• First-Time Setup</span>
                 </div>
               </div>
             </div>
 
             <form onSubmit={handleConfirmCommitment} className="space-y-5">
-              <div className="bg-gradient-to-br from-amber-50 to-orange-50/70 p-4.5 rounded-2xl border border-amber-200/80 text-amber-900 space-y-2.5">
-                <div className="flex items-center justify-between font-black text-amber-800 text-xs uppercase tracking-wider">
+              <div className="bg-gradient-to-br from-amber-50 to-orange-50/70 dark:from-amber-950/50 dark:to-orange-950/30 p-4.5 rounded-2xl border border-amber-200/80 dark:border-amber-700/60 text-amber-900 dark:text-amber-100 space-y-2.5">
+                <div className="flex items-center justify-between font-black text-amber-800 dark:text-amber-300 text-xs uppercase tracking-wider">
                   <span>📢 Leaderboard Scoring Rules</span>
-                  <span className="text-[10px] text-amber-700 font-bold bg-white/70 px-2 py-0.5 rounded-md border border-amber-200">
+                  <span className="text-[10px] text-amber-700 dark:text-amber-300 font-bold bg-white/80 dark:bg-slate-900/80 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-700/60">
                     Required
                   </span>
                 </div>
-                <p className="text-xs font-semibold leading-relaxed text-slate-700">
+                <p className="text-xs font-semibold leading-relaxed text-slate-700 dark:text-slate-300">
                   Your daily leaderboard score will be assigned based on your target commitment:
                 </p>
-                <div className="bg-white/90 p-3 rounded-xl border border-amber-200 text-center font-mono font-black text-slate-900 text-sm shadow-2xs">
+                <div className="bg-slate-900 dark:bg-slate-950 p-3.5 rounded-xl border border-amber-500/40 text-center font-mono font-black text-amber-300 dark:text-amber-400 text-sm shadow-md tracking-tight">
                   Base Points = (Rounds Chanted / Commitment) × 10
                 </div>
-                <ul className="text-[11px] font-bold text-slate-600 space-y-1.5 pl-1">
+                <ul className="text-[11px] font-bold text-slate-600 dark:text-slate-300 space-y-1.5 pl-1">
                   <li className="flex items-start gap-1.5">
                     <span className="text-amber-500 font-black">✓</span>
                     <span>Completing 100% of your target ({commitmentInput.trim() || '16'} rounds) = 10 Base Points.</span>
                   </li>
                   <li className="flex items-start gap-1.5">
-                    <span className="text-amber-600 font-black">🔒</span>
+                    <span className="text-amber-600 dark:text-amber-400 font-black">🔒</span>
                     <span><strong>Notice:</strong> This is a <u>one-time setup</u>. Once saved, your target commitment cannot be changed from the log window.</span>
                   </li>
                 </ul>
               </div>
 
               <div>
-                <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-black text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-2">
                   Daily Chanting Rounds Commitment
                 </label>
                 <input
@@ -440,17 +440,17 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
                     setCommitmentInput(val);
                     if (commitmentError) setCommitmentError('');
                   }}
-                  className={`w-full p-4 rounded-2xl bg-slate-50 border-2 outline-none font-black text-2xl text-slate-800 transition-all text-center ${
-                    commitmentError ? 'border-red-500 bg-red-50/20 focus:border-red-500' : 'border-slate-200 focus:border-amber-500 focus:bg-white'
+                  className={`w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border-2 outline-none font-black text-2xl text-slate-800 dark:text-slate-100 transition-all text-center ${
+                    commitmentError ? 'border-red-500 bg-red-50/20 dark:bg-red-950/30' : 'border-slate-200 dark:border-slate-700 focus:border-amber-500 dark:focus:border-amber-400 focus:bg-white dark:focus:bg-slate-800'
                   }`}
                   placeholder="e.g. 16"
                 />
                 {commitmentError ? (
-                  <p className="mt-2 text-xs font-bold text-red-600 flex items-center justify-center gap-1.5 bg-red-50 p-2.5 rounded-xl border border-red-100">
+                  <p className="mt-2 text-xs font-bold text-red-600 dark:text-red-400 flex items-center justify-center gap-1.5 bg-red-50 dark:bg-red-950/50 p-2.5 rounded-xl border border-red-100 dark:border-red-900/50">
                     <span>⚠️</span> {commitmentError}
                   </p>
                 ) : (
-                  <p className="mt-1.5 text-[11px] text-center font-medium text-slate-500">
+                  <p className="mt-1.5 text-[11px] text-center font-medium text-slate-500 dark:text-slate-400">
                     Clear the field and enter your daily target rounds (minimum 1).
                   </p>
                 )}
@@ -459,7 +459,7 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
               <button
                 type="submit"
                 disabled={isSavingCommitment}
-                className="w-full bg-amber-500 hover:bg-amber-600 text-white py-4.5 rounded-2xl font-black text-base transition-all shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                className="w-full bg-amber-500 hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500 text-white py-4.5 rounded-2xl font-black text-base transition-all shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {isSavingCommitment ? 'Saving Commitment...' : (
                   <>Save Commitment & Proceed <ChevronRight size={18} /></>
