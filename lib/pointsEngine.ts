@@ -20,17 +20,19 @@ export interface CalculationResult {
 }
 
 export function calculatePoints(input: ActivityInput): CalculationResult {
-  // 1 round = 1 point
-  const base_points = input.chanting_rounds;
+  // Commitment Scoring Formula: Base Points = (chanting_rounds / target_chanting) * 10
+  const target = input.target_chanting && input.target_chanting > 0 ? input.target_chanting : 16;
+  const rawBasePoints = (input.chanting_rounds / target) * 10;
+  const base_points = Math.round(rawBasePoints);
 
-  // Streak Multiplier: Day 1 = 1x, Day 2 = 1.5x, Day 3 = 2x, etc.
+  // Direct Streak Multiplier: Day 1 = 1x, Day 2 = 2x, Day 3 = 3x, Day N = Nx
   const effectiveStreak = Math.max(1, input.streak_count || 1);
-  const streakMultiplier = 1 + (effectiveStreak - 1) * 0.5;
+  const streakMultiplier = effectiveStreak;
 
   const total_points = Math.round(base_points * streakMultiplier);
   const streak_bonus = total_points - base_points;
 
-  const completion_percentage = 100;
+  const completion_percentage = Math.min(100, Math.round((input.chanting_rounds / target) * 100));
 
   return {
     base_points,

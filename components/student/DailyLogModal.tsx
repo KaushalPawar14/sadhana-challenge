@@ -24,8 +24,10 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   ));
 
-  const [step, setStep] = useState<'form' | 'summary'>('form');
+  const [step, setStep] = useState<'commitment' | 'form' | 'summary'>('form');
   const [isLoading, setIsLoading] = useState(false);
+  const [isSavingCommitment, setIsSavingCommitment] = useState(false);
+  const [commitmentRounds, setCommitmentRounds] = useState<number>(16);
   const [logDate, setLogDate] = useState(new Date().toISOString().split('T')[0]);
   const [formData, setFormData] = useState({
     chanting_rounds: 0,
@@ -108,6 +110,8 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
         .eq('id', user?.id)
         .single();
       setUserProfile(profile);
+      const targetChant = profile?.target_chanting || 16;
+      setCommitmentRounds(targetChant);
 
       // Fetch existing logs to find already completed dates
       const { data: existingLogs } = await supabase
@@ -117,6 +121,13 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
 
       const loggedDates = existingLogs?.map(l => l.log_date) || [];
       setAlreadyLoggedDates(loggedDates);
+
+      // If user has never logged before, show the Commitment Setup dialogue box first!
+      if (loggedDates.length === 0) {
+        setStep('commitment');
+      } else {
+        setStep('form');
+      }
 
       // Default to the first unlogged past date going backward starting from today
       const today = new Date();
@@ -129,7 +140,7 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
       setLogDate(checkDateStr);
 
       // Fetch in-app chanting rounds for the selected date if present
-      let defaultChantingRounds = profile?.target_chanting || 0;
+      let defaultChantingRounds = targetChant;
       const { data: chantLog } = await supabase
         .from('user_chanting_logs')
         .select('rounds_chanted')
@@ -151,6 +162,32 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
       console.error("Error fetching modal data:", e);
     } finally {
       setIsFetching(false);
+    }
+  };
+
+  const handleConfirmCommitment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    if (commitmentRounds <= 0) {
+      toast.error('Please enter a valid commitment (at least 1 round).');
+      return;
+    }
+    setIsSavingCommitment(true);
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ target_chanting: commitmentRounds })
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      setUserProfile((prev: any) => ({ ...prev, target_chanting: commitmentRounds }));
+      setStep('form');
+      toast.success(`Daily Chanting Commitment of ${commitmentRounds} rounds saved!`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save commitment');
+    } finally {
+      setIsSavingCommitment(false);
     }
   };
 
@@ -338,7 +375,67 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
           <X size={24} />
         </button>
 
-        {step === 'form' ? (
+        {step === 'commitment' ? (
+          <div className="p-8 md:p-10">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center text-amber-600 text-xl shadow-xs">
+                📿
+              </div>
+              <div>
+                <h2 className="text-2xl font-black text-slate-800">Set Daily Commitment</h2>
+                <p className="text-slate-500 text-xs font-bold">First-Time Setup Required</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleConfirmCommitment} className="space-y-5">
+              <div className="bg-gradient-to-br from-amber-50 to-orange-50/70 p-4.5 rounded-2xl border border-amber-200/80 text-amber-900 space-y-2.5">
+                <div className="flex items-center gap-2 font-black text-amber-800 text-xs uppercase tracking-wider">
+                  <span>📢 Leaderboard Scoring Rules</span>
+                </div>
+                <p className="text-xs font-semibold leading-relaxed text-slate-700">
+                  Your daily leaderboard score will be assigned based on your commitment:
+                </p>
+                <div className="bg-white/90 p-3 rounded-xl border border-amber-200 text-center font-mono font-black text-slate-900 text-sm shadow-2xs">
+                  Base Points = (Rounds Chanted / Commitment) × 10
+                </div>
+                <ul className="text-[11px] font-bold text-slate-600 space-y-1 pl-1">
+                  <li className="flex items-center gap-1.5">
+                    <span className="text-amber-500">✓</span> Completing {commitmentRounds}/{commitmentRounds} rounds = 10 Base Points.
+                  </li>
+                  <li className="flex items-center gap-1.5">
+                    <span className="text-amber-500">🔒</span> Once your first log is submitted, this commitment cannot be changed from the log window.
+                  </li>
+                </ul>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-2">
+                  Daily Chanting Rounds Commitment
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="108"
+                  value={commitmentRounds}
+                  onChange={(e) => setCommitmentRounds(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-slate-200 focus:border-amber-500 focus:bg-white outline-none font-black text-xl text-slate-800 transition-all text-center"
+                  placeholder="e.g. 16"
+                  required
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSavingCommitment}
+                className="w-full bg-amber-500 hover:bg-amber-600 text-white py-4.5 rounded-2xl font-black text-base transition-all shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isSavingCommitment ? 'Saving Commitment...' : (
+                  <>Save Commitment & Proceed <ChevronRight size={18} /></>
+                )}
+              </button>
+            </form>
+          </div>
+        ) : step === 'form' ? (
           <div className="p-8 md:p-10">
             <div className="flex items-center gap-3 mb-8">
               <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600">
@@ -391,7 +488,9 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
                         <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
                           <span>📿</span> Chanting Rounds
                         </label>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Target: -</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
+                          Commitment: {userProfile?.target_chanting || commitmentRounds || 16} Rounds
+                        </span>
                       </div>
                       <input
                         type="number"
@@ -414,8 +513,8 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
                       )}
                     </button>
 
-                    <p className="text-center text-[10px] text-slate-400 font-medium uppercase tracking-widest">
-                      1 Round = 1 Point • Streak Multipliers Active 🔥
+                    <p className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                      Points = Base Points × Streak Count (Streak 1 = 1x, Streak 2 = 2x, etc.) 🔥
                     </p>
                   </>
                 )}

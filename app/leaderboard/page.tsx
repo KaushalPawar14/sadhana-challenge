@@ -802,7 +802,7 @@ export default function LeaderboardPage() {
                     <li className="flex items-start gap-2">
                       <span className="text-orange-500 font-black mt-0.5">•</span>
                       <span>
-                        <strong className="text-slate-700">1 Round = 1 Point:</strong> Each completed chanting round gives 1 base point.
+                        <strong className="text-slate-700">Commitment Base Scoring:</strong> Base Points = (Rounds Chanted / Commitment) × 10.
                       </span>
                     </li>
                     <li className="flex items-start gap-2">
@@ -820,37 +820,37 @@ export default function LeaderboardPage() {
                   </ul>
                 </div>
 
-                {/* The Game Changer: Streak Bonus */}
+                {/* The Game Changer: Direct Streak Multiplier */}
                 <div className="bg-gradient-to-br from-orange-50/50 to-orange-100/10 p-4 rounded-2xl border border-orange-100/50">
                   <h3 className="text-xs font-black text-orange-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    ⚡ Incremental Streak Multiplier (Game Changer!)
+                    ⚡ Direct Streak Multiplier (Game Changer!)
                   </h3>
                   <p className="text-xs text-slate-600 font-bold leading-relaxed mb-2">
-                    Every daily report you submit increases your point multiplier by 0.50x (50%):
+                    Every daily report you submit multiplies your daily base points directly by your streak number:
                   </p>
                   <ul className="space-y-2 text-xs text-slate-600 font-bold leading-relaxed">
                     <li className="flex items-start gap-2">
                       <span className="text-amber-500">🔥</span>
                       <span>
-                        <strong className="text-slate-700">Day 1:</strong> 1.0x (Base points)
+                        <strong className="text-slate-700">Day 1 (Streak 1):</strong> 1x Multiplier (Base points)
                       </span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-amber-500">🔥</span>
                       <span>
-                        <strong className="text-slate-700">Day 2:</strong> 1.50x (150% points)
+                        <strong className="text-slate-700">Day 2 (Streak 2):</strong> 2x Multiplier (Doubled points!)
                       </span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-amber-500">🔥</span>
                       <span>
-                        <strong className="text-slate-700">Day 3:</strong> 2.00x (200% points)
+                        <strong className="text-slate-700">Day 3 (Streak 3):</strong> 3x Multiplier (Tripled points!)
                       </span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-indigo-500">📈</span>
                       <span>
-                        <strong className="text-slate-700">Progression:</strong> Multiplier formula = <strong className="text-indigo-600 font-extrabold">1 + (Streak - 1) × 0.50</strong>.
+                        <strong className="text-slate-700">Daily Formula:</strong> Score = <strong className="text-indigo-600 font-extrabold">Base Points × Streak Count</strong>.
                       </span>
                     </li>
                   </ul>
