@@ -102,7 +102,7 @@ export default function AdminSettings() {
     setIsLoadingSettings(false);
   };
 
-  const [currentUserRole, setCurrentUserRole] = useState<string>('HOD');
+  const [currentUserRole, setCurrentUserRole] = useState<string>('');
   const [currentUserEmail, setCurrentUserEmail] = useState<string>('');
 
   useEffect(() => {
@@ -550,7 +550,6 @@ export default function AdminSettings() {
       { key: 'FOLK_ENABLER_FEMALE', title: 'Enablers (Female)', icon: '👩', count: adminCategoryCounts.FOLK_ENABLER_FEMALE, colorClass: 'text-rose-600 dark:text-rose-400', borderClass: 'border-rose-100/60 dark:border-rose-900/40' },
     ];
 
-    if (currentUserRole === 'HOD') return stats;
     if (currentUserRole === 'FOLK_GUIDE') return stats.filter(s => s.key === 'TOTAL' || s.key === 'FOLK_GUIDE' || s.key === 'FOLK_ENABLER_MALE');
     if (currentUserRole === 'FOLK_ENABLER_MALE') return stats.filter(s => s.key === 'TOTAL' || s.key === 'FOLK_ENABLER_MALE');
     if (currentUserRole === 'FOLK_ENABLER_FEMALE') return stats.filter(s => s.key === 'TOTAL' || s.key === 'FOLK_ENABLER_FEMALE');
@@ -597,7 +596,6 @@ export default function AdminSettings() {
       }
     ];
 
-    if (currentUserRole === 'HOD') return allCols;
     if (currentUserRole === 'FOLK_GUIDE') return allCols.filter(c => c.roleKey === 'FOLK_GUIDE' || c.roleKey === 'FOLK_ENABLER_MALE');
     if (currentUserRole === 'FOLK_ENABLER_MALE') return allCols.filter(c => c.roleKey === 'FOLK_ENABLER_MALE');
     if (currentUserRole === 'FOLK_ENABLER_FEMALE') return allCols.filter(c => c.roleKey === 'FOLK_ENABLER_FEMALE');
