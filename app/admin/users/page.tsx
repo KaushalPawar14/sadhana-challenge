@@ -20,9 +20,30 @@ export default function AdminUsers() {
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [modalType, setModalType] = useState<'bonus' | 'award' | 'history' | null>(null);
 
+  const [currentUserRole, setCurrentUserRole] = useState<string>('HOD');
+
   useEffect(() => {
     fetchUsers();
+    fetchAdminRole();
   }, []);
+
+  const fetchAdminRole = async () => {
+    try {
+      const res = await fetch('/api/admin-whitelist');
+      if (res.ok) {
+        const data = await res.json();
+        const role = data.currentUserRole || 'HOD';
+        setCurrentUserRole(role);
+        if (role === 'FOLK_GUIDE' || role === 'FOLK_ENABLER_MALE') {
+          setGenderFilter('M');
+        } else if (role === 'FOLK_ENABLER_FEMALE') {
+          setGenderFilter('F');
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching admin role', e);
+    }
+  };
 
   const fetchUsers = async () => {
     setIsLoading(true);
@@ -57,26 +78,37 @@ export default function AdminUsers() {
     setIsLoading(false);
   };
 
+  // Role-scoped users for User Management
+  const scopedUsers = React.useMemo(() => {
+    if (currentUserRole === 'FOLK_GUIDE' || currentUserRole === 'FOLK_ENABLER_MALE') {
+      return users.filter(u => u.gender === 'M');
+    }
+    if (currentUserRole === 'FOLK_ENABLER_FEMALE') {
+      return users.filter(u => u.gender === 'F');
+    }
+    return users;
+  }, [users, currentUserRole]);
+
   const uniqueDepartments = Array.from(
-    new Set(users.map(u => u.department).filter(Boolean))
+    new Set(scopedUsers.map(u => u.department).filter(Boolean))
   ).sort() as string[];
 
   const hasActiveFilters =
     search.trim() !== '' ||
-    genderFilter !== 'ALL' ||
+    (currentUserRole === 'HOD' && genderFilter !== 'ALL') ||
     deptFilter !== 'ALL' ||
     pointsFilter !== 'ALL' ||
     statusFilter !== 'ALL';
 
   const resetFilters = () => {
     setSearch('');
-    setGenderFilter('ALL');
+    if (currentUserRole === 'HOD') setGenderFilter('ALL');
     setDeptFilter('ALL');
     setPointsFilter('ALL');
     setStatusFilter('ALL');
   };
 
-  const filteredUsers = users.filter(u => {
+  const filteredUsers = scopedUsers.filter(u => {
     // 1. Text search filter
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -87,8 +119,8 @@ export default function AdminUsers() {
       if (!matchName && !matchEmail && !matchDept && !matchMobile) return false;
     }
 
-    // 2. Gender filter
-    if (genderFilter !== 'ALL') {
+    // 2. Gender filter (if HOD)
+    if (currentUserRole === 'HOD' && genderFilter !== 'ALL') {
       if (genderFilter === 'M' && u.gender !== 'M') return false;
       if (genderFilter === 'F' && u.gender !== 'F') return false;
       if (genderFilter === 'UNASSIGNED' && (u.gender === 'M' || u.gender === 'F')) return false;
@@ -312,18 +344,28 @@ export default function AdminUsers() {
             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
               <Filter size={10} /> Gender
             </label>
-            <select
-              value={genderFilter}
-              onChange={(e) => setGenderFilter(e.target.value)}
-              className={`w-full p-3 rounded-xl border text-xs font-bold outline-none focus:border-indigo-500 cursor-pointer transition-all ${
-                genderFilter !== 'ALL' ? 'bg-indigo-50/70 text-indigo-800 border-indigo-300' : 'bg-slate-50 border-slate-200/60 text-slate-700'
-              }`}
-            >
-              <option value="ALL">All Genders</option>
-              <option value="M">👨 Male (M)</option>
-              <option value="F">👩 Female (F)</option>
-              <option value="UNASSIGNED">❓ Unassigned</option>
-            </select>
+            {currentUserRole === 'HOD' ? (
+              <select
+                value={genderFilter}
+                onChange={(e) => setGenderFilter(e.target.value)}
+                className={`w-full p-3 rounded-xl border text-xs font-bold outline-none focus:border-indigo-500 cursor-pointer transition-all ${
+                  genderFilter !== 'ALL' ? 'bg-indigo-50/70 text-indigo-800 border-indigo-300' : 'bg-slate-50 border-slate-200/60 text-slate-700'
+                }`}
+              >
+                <option value="ALL">All Genders</option>
+                <option value="M">👨 Male (M)</option>
+                <option value="F">👩 Female (F)</option>
+                <option value="UNASSIGNED">❓ Unassigned</option>
+              </select>
+            ) : currentUserRole === 'FOLK_ENABLER_FEMALE' ? (
+              <div className="w-full p-2.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-800 font-black text-xs text-center">
+                ♀️ Female Scope Only
+              </div>
+            ) : (
+              <div className="w-full p-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-800 font-black text-xs text-center">
+                ♂️ Male Scope Only
+              </div>
+            )}
           </div>
 
           {/* Department Filter */}

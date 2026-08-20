@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabaseClient';
 import {
@@ -28,8 +28,11 @@ export default function AdminDashboard() {
   const [customMsg, setCustomMsg] = useState('');
   const [copied, setCopied] = useState(false);
 
+  const [currentUserRole, setCurrentUserRole] = useState<string>('HOD');
+
   useEffect(() => {
     fetchDashboardData();
+    fetchAdminRole();
 
     const initialTheme = localStorage.getItem('app_theme') || 'default';
     setActiveTheme(initialTheme);
@@ -53,6 +56,24 @@ export default function AdminDashboard() {
       window.removeEventListener('theme-change', handleThemeChange);
     };
   }, []);
+
+  const fetchAdminRole = async () => {
+    try {
+      const res = await fetch('/api/admin-whitelist');
+      if (res.ok) {
+        const data = await res.json();
+        const role = data.currentUserRole || 'HOD';
+        setCurrentUserRole(role);
+        if (role === 'FOLK_GUIDE' || role === 'FOLK_ENABLER_MALE') {
+          setGenderFilter('M');
+        } else if (role === 'FOLK_ENABLER_FEMALE') {
+          setGenderFilter('F');
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching admin role', e);
+    }
+  };
 
   const markStudentAsMessaged = (userId: string) => {
     const today = new Date().toLocaleDateString('en-CA');
@@ -84,13 +105,25 @@ export default function AdminDashboard() {
     setIsLoading(false);
   };
 
+  // Role-scoped users for summary metrics & matrix calculation
+  const scopedUsers = useMemo(() => {
+    if (currentUserRole === 'FOLK_GUIDE' || currentUserRole === 'FOLK_ENABLER_MALE') {
+      return users.filter(u => u.gender === 'M');
+    }
+    if (currentUserRole === 'FOLK_ENABLER_FEMALE') {
+      return users.filter(u => u.gender === 'F');
+    }
+    return users;
+  }, [users, currentUserRole]);
+
   const todayStr = new Date().toLocaleDateString('en-CA');
 
-  // Metric Summaries
-  const totalStudents = users.length;
-  const loggedTodaySet = new Set(logs.filter(l => l.log_date === todayStr).map(l => l.user_id));
+  // Metric Summaries (Role Scoped)
+  const totalStudents = scopedUsers.length;
+  const scopedUserIds = useMemo(() => new Set(scopedUsers.map(u => u.id)), [scopedUsers]);
+  const loggedTodaySet = new Set(logs.filter(l => l.log_date === todayStr && scopedUserIds.has(l.user_id)).map(l => l.user_id));
   const logsTodayCount = loggedTodaySet.size;
-  const totalPoints = users.reduce((acc, u) => acc + (u.total_points || 0), 0);
+  const totalPoints = scopedUsers.reduce((acc, u) => acc + (u.total_points || 0), 0);
   const completionPercentage = Math.round((logsTodayCount / (totalStudents || 1)) * 100);
 
   // Challenge Dates Logic
@@ -136,10 +169,10 @@ export default function AdminDashboard() {
     });
   });
 
-  // Filtered Students for Challenge Analysis Matrix
-  const filteredMatrixUsers = users.filter(u => {
-    // 1. Gender Filter
-    if (genderFilter !== 'ALL' && u.gender !== genderFilter) return false;
+  // Filtered Students for Challenge Analysis Matrix (Role Scoped)
+  const filteredMatrixUsers = scopedUsers.filter(u => {
+    // 1. Gender Filter (if HOD)
+    if (currentUserRole === 'HOD' && genderFilter !== 'ALL' && u.gender !== genderFilter) return false;
 
     // 2. Search Text Filter
     if (searchQuery.trim()) {
@@ -175,9 +208,12 @@ export default function AdminDashboard() {
       return idx >= 0 ? `• Day ${idx + 1}: ${dateStr}` : `• ${dateStr}`;
     }).join('\n');
 
+    // Extract only the first word/name (e.g. "Rahul Patel" -> "Rahul")
+    const firstName = (student.full_name || 'Student').trim().split(/\s+/)[0] || 'Student';
+
     const defaultMsg = missedElapsedDates.length > 0
-      ? `Hare Krishna ${student.full_name || 'Student'}! \u{1F64F}\n\nThis is a gentle reminder regarding your Sadhana Challenge logs. You have pending logs for the following dates:\n${formattedMissedDays}\n\nPlease update your sadhana log today:\nhttps://folk-competition.vercel.app/`
-      : `Hare Krishna ${student.full_name || 'Student'}! \u{1F64F}\n\nGreat job on keeping up with your Sadhana Challenge logs! Keep going! \u{1F4FF}\u{2728}`;
+      ? `Hare Krishna ${firstName}! \u{1F64F}\n\nThis is a gentle reminder regarding your Sadhana Challenge logs. You have pending logs for the following dates:\n${formattedMissedDays}\n\nPlease update your sadhana log today:\nhttps://folk-competition.vercel.app/`
+      : `Hare Krishna ${firstName}! \u{1F64F}\n\nGreat job on keeping up with your Sadhana Challenge logs! Keep going! \u{1F4FF}\u{2728}`;
 
     setSelectedStudent({
       ...student,
@@ -289,34 +325,48 @@ export default function AdminDashboard() {
               <Calendar className="text-indigo-600" size={20} /> Challenge Attendance & Daily Score Matrix
             </h3>
 
-            {/* Gender Segment Filter */}
-            <div className="flex items-center gap-1 bg-slate-100/70 p-1 rounded-xl self-start sm:self-auto">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2 hidden sm:inline">Gender:</span>
-              <button
-                onClick={() => setGenderFilter('ALL')}
-                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer ${
-                  genderFilter === 'ALL' ? 'bg-white text-indigo-700 shadow-xs font-black' : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setGenderFilter('M')}
-                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer flex items-center gap-1 ${
-                  genderFilter === 'M' ? 'bg-indigo-600 text-white shadow-xs font-black' : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                👨 Male
-              </button>
-              <button
-                onClick={() => setGenderFilter('F')}
-                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer flex items-center gap-1 ${
-                  genderFilter === 'F' ? 'bg-pink-600 text-white shadow-xs font-black' : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                👩 Female
-              </button>
-            </div>
+            {/* Gender Segment Filter / Role Scope Indicator */}
+            {currentUserRole === 'HOD' ? (
+              <div className="flex items-center gap-1 bg-slate-100/70 border border-slate-200/50 p-1 rounded-xl self-start sm:self-auto admin-gender-filter-container">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2 hidden sm:inline">Gender:</span>
+                <button
+                  onClick={() => setGenderFilter('ALL')}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer ${
+                    genderFilter === 'ALL' ? 'bg-white text-indigo-700 shadow-xs font-black admin-gender-btn-all-active' : 'text-slate-500 hover:text-slate-800 admin-gender-btn-inactive'
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => setGenderFilter('M')}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer flex items-center gap-1 ${
+                    genderFilter === 'M' ? 'bg-indigo-600 text-white shadow-xs font-black admin-gender-btn-m-active' : 'text-slate-500 hover:text-slate-800 admin-gender-btn-inactive'
+                  }`}
+                >
+                  👨 Male
+                </button>
+                <button
+                  onClick={() => setGenderFilter('F')}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer flex items-center gap-1 ${
+                    genderFilter === 'F' ? 'bg-pink-600 text-white shadow-xs font-black admin-gender-btn-f-active' : 'text-slate-500 hover:text-slate-800 admin-gender-btn-inactive'
+                  }`}
+                >
+                  👩 Female
+                </button>
+              </div>
+            ) : currentUserRole === 'FOLK_ENABLER_FEMALE' ? (
+              <div className="px-3.5 py-2 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl font-bold text-xs flex items-center gap-2 shadow-xs self-start sm:self-auto">
+                <span className="font-black text-rose-700">♀️ Female Participants Only</span>
+                <span className="text-[9px] bg-rose-200/70 px-2 py-0.5 rounded-full font-black uppercase text-rose-900">Female Enabler Scope</span>
+              </div>
+            ) : (
+              <div className="px-3.5 py-2 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-xl font-bold text-xs flex items-center gap-2 shadow-xs self-start sm:self-auto">
+                <span className="font-black text-indigo-700">♂️ Male Participants Only</span>
+                <span className="text-[9px] bg-indigo-200/70 px-2 py-0.5 rounded-full font-black uppercase text-indigo-900">
+                  {currentUserRole === 'FOLK_GUIDE' ? 'Folk Guide Scope' : 'Male Enabler Scope'}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Search Bar & Status Dropdown Filter */}

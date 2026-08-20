@@ -550,6 +550,94 @@ aside nav a.bg-indigo-600 {
   border-color: #26334d !important;
 }
 
+/* Completely eradicate native browser date picker indicator across all WebKit engines */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  display: none !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  pointer-events: none !important;
+  position: absolute !important;
+  right: -9999px !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+}
+
+input[type="date"]::-webkit-inner-spin-button,
+input[type="date"]::-webkit-clear-button {
+  display: none !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+}
+
+/* Date Input Text & Background per Theme */
+/* DEFAULT / LIGHT MODE */
+.admin-date-field,
+input[type="date"] {
+  color-scheme: light !important;
+  color: #0f172a !important; /* Pitch Dark Slate text for crisp Light Mode visibility */
+  background-color: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+}
+
+/* DARK MODE (.theme-dark) */
+.theme-dark .admin-date-field,
+.theme-dark input[type="date"] {
+  color-scheme: dark !important;
+  color: #ffffff !important; /* Pure White text for Dark Mode */
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+}
+
+/* CREAM MODE (.theme-cream) */
+.theme-cream .admin-date-field,
+.theme-cream input[type="date"] {
+  color-scheme: light !important;
+  color: #451a03 !important; /* Deep warm brown text for Cream Mode */
+  background-color: #f5ebd9 !important;
+  border-color: #ebdccb !important;
+}
+
+/* Single Calendar Icon Contrast per Theme */
+.admin-date-icon {
+  color: #334155 !important; /* Slate-700 in Light Mode */
+}
+
+.theme-dark .admin-date-icon {
+  color: #ffffff !important; /* Pure White in Dark Mode */
+}
+
+.theme-cream .admin-date-icon {
+  color: #78350f !important; /* Warm Dark Brown in Cream Mode */
+}
+
+/* Admin Category Badges in Dark Mode */
+.theme-dark .bg-emerald-50 {
+  background-color: rgba(16, 185, 129, 0.2) !important;
+  color: #6ee7b7 !important;
+  border-color: rgba(16, 185, 129, 0.4) !important;
+}
+
+.theme-dark .bg-amber-50 {
+  background-color: rgba(245, 158, 11, 0.2) !important;
+  color: #fde047 !important;
+  border-color: rgba(245, 158, 11, 0.4) !important;
+}
+
+.theme-dark .bg-rose-50 {
+  background-color: rgba(244, 63, 94, 0.2) !important;
+  color: #f472b6 !important;
+  border-color: rgba(244, 63, 94, 0.4) !important;
+}
+
+.theme-dark .bg-indigo-50 {
+  background-color: rgba(99, 102, 241, 0.2) !important;
+  color: #a5b4fc !important;
+  border-color: rgba(99, 102, 241, 0.4) !important;
+}
+
 .theme-dark input::placeholder,
 .theme-dark textarea::placeholder {
   color: #64748b !important;
@@ -582,6 +670,48 @@ aside nav a.bg-indigo-600 {
   background-color: rgba(99, 102, 241, 0.15) !important;
   color: #a5b4fc !important;
   border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+/* Gender Filter Segment & Badges Dark Mode Visibility Fix */
+.theme-dark .admin-gender-filter-container {
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+}
+
+.theme-dark .admin-gender-btn-inactive {
+  color: #94a3b8 !important;
+}
+.theme-dark .admin-gender-btn-inactive:hover {
+  color: #f8fafc !important;
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.theme-dark .admin-gender-btn-all-active {
+  background-color: #6366f1 !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px 0 rgba(99, 102, 241, 0.45) !important;
+}
+
+.theme-dark .admin-gender-btn-m-active {
+  background-color: #4f46e5 !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px 0 rgba(79, 70, 229, 0.45) !important;
+}
+
+.theme-dark .admin-gender-btn-f-active {
+  background-color: #ec4899 !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px 0 rgba(236, 72, 153, 0.45) !important;
+}
+
+.theme-dark .bg-indigo-100 {
+  background-color: rgba(99, 102, 241, 0.25) !important;
+  color: #c7d2fe !important;
+}
+
+.theme-dark .bg-pink-100 {
+  background-color: rgba(236, 72, 153, 0.25) !important;
+  color: #fbcfe8 !important;
 }
 
 /* 2. Cream Mode Admin Overrides */

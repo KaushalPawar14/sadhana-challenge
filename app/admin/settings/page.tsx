@@ -102,12 +102,33 @@ export default function AdminSettings() {
     setIsLoadingSettings(false);
   };
 
+  const [currentUserRole, setCurrentUserRole] = useState<string>('HOD');
+  const [currentUserEmail, setCurrentUserEmail] = useState<string>('');
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data?.user?.email) {
+        setCurrentUserEmail(data.user.email.toLowerCase());
+      }
+    });
+  }, []);
+
   const fetchAdmins = async () => {
     try {
       const res = await fetch('/api/admin-whitelist');
       if (res.ok) {
         const data = await res.json();
-        setAdmins(data || []);
+        if (Array.isArray(data)) {
+          setAdmins(data);
+        } else if (data && Array.isArray(data.admins)) {
+          setAdmins(data.admins);
+          if (data.currentUserRole) {
+            setCurrentUserRole(data.currentUserRole);
+          }
+          if (data.currentUserEmail) {
+            setCurrentUserEmail(data.currentUserEmail.toLowerCase());
+          }
+        }
       }
     } catch (err) {
       console.error("Failed to load admin emails list", err);
@@ -279,18 +300,29 @@ export default function AdminSettings() {
     else toast.success("Settings saved! ⚙️");
   };
 
+  const [newAdminRole, setNewAdminRole] = useState<string>('FOLK_ENABLER_MALE');
+
+  const getRoleLabel = (r: string) => {
+    if (r === 'HOD') return '👑 Folk HOD';
+    if (r === 'FOLK_GUIDE') return '🚩 Folk Guide';
+    if (r === 'FOLK_ENABLER_FEMALE') return '👩 Folk Enablers (Female)';
+    return '👨 Folk Enablers (Male)';
+  };
+
   const handleAddAdmin = async (e: any) => {
     e.preventDefault();
-    const email = new FormData(e.target).get('email') as string;
+    const formData = new FormData(e.target);
+    const email = formData.get('email') as string;
+    const role = formData.get('role') as string || newAdminRole;
     try {
       const res = await fetch('/api/admin-whitelist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email, role })
       });
 
       if (res.ok) {
-        toast.success("Admin added successfully! 🛡️");
+        toast.success(`Admin added as ${getRoleLabel(role)}! 🛡️`);
         fetchAdmins();
         e.target.reset();
       } else {
@@ -299,6 +331,26 @@ export default function AdminSettings() {
       }
     } catch (err) {
       toast.error("Failed to add admin email");
+    }
+  };
+
+  const handleUpdateAdminRole = async (id: string, role: string) => {
+    try {
+      const res = await fetch('/api/admin-whitelist', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, role })
+      });
+
+      if (res.ok) {
+        toast.success(`Category updated to ${getRoleLabel(role)}! ✨`);
+        setAdmins(prev => prev.map(a => a.id === id ? { ...a, role } : a));
+      } else {
+        const errData = await res.json();
+        toast.error(errData.error || "Failed to update category");
+      }
+    } catch (err) {
+      toast.error("Failed to update admin category");
     }
   };
 
@@ -478,6 +530,133 @@ export default function AdminSettings() {
     return counts;
   }, [books]);
 
+  const adminCategoryCounts = useMemo(() => {
+    const counts = { HOD: 0, FOLK_GUIDE: 0, FOLK_ENABLER_MALE: 0, FOLK_ENABLER_FEMALE: 0 };
+    admins.forEach(a => {
+      let r = a.role || 'HOD';
+      if (r === 'FOLK_ENABLER') r = 'FOLK_ENABLER_MALE';
+      if (r in counts) counts[r as keyof typeof counts]++;
+      else counts.FOLK_ENABLER_MALE++;
+    });
+    return counts;
+  }, [admins]);
+
+  const visibleStats = useMemo(() => {
+    const stats = [
+      { key: 'TOTAL', title: 'Total Admins', count: admins.length, colorClass: 'text-slate-800 dark:text-slate-100', borderClass: 'border-slate-100 dark:border-slate-800' },
+      { key: 'HOD', title: 'Folk HOD', icon: '👑', count: adminCategoryCounts.HOD, colorClass: 'text-amber-600 dark:text-amber-400', borderClass: 'border-amber-100/60 dark:border-amber-900/40' },
+      { key: 'FOLK_GUIDE', title: 'Folk Guides', icon: '🚩', count: adminCategoryCounts.FOLK_GUIDE, colorClass: 'text-emerald-600 dark:text-emerald-400', borderClass: 'border-emerald-100/60 dark:border-emerald-900/40' },
+      { key: 'FOLK_ENABLER_MALE', title: 'Enablers (Male)', icon: '👨', count: adminCategoryCounts.FOLK_ENABLER_MALE, colorClass: 'text-indigo-600 dark:text-indigo-400', borderClass: 'border-indigo-100/60 dark:border-indigo-900/40' },
+      { key: 'FOLK_ENABLER_FEMALE', title: 'Enablers (Female)', icon: '👩', count: adminCategoryCounts.FOLK_ENABLER_FEMALE, colorClass: 'text-rose-600 dark:text-rose-400', borderClass: 'border-rose-100/60 dark:border-rose-900/40' },
+    ];
+
+    if (currentUserRole === 'HOD') return stats;
+    if (currentUserRole === 'FOLK_GUIDE') return stats.filter(s => s.key === 'TOTAL' || s.key === 'FOLK_GUIDE' || s.key === 'FOLK_ENABLER_MALE');
+    if (currentUserRole === 'FOLK_ENABLER_MALE') return stats.filter(s => s.key === 'TOTAL' || s.key === 'FOLK_ENABLER_MALE');
+    if (currentUserRole === 'FOLK_ENABLER_FEMALE') return stats.filter(s => s.key === 'TOTAL' || s.key === 'FOLK_ENABLER_FEMALE');
+    return stats;
+  }, [admins, adminCategoryCounts, currentUserRole]);
+
+  const visibleRoleColumns = useMemo(() => {
+    const allCols = [
+      {
+        roleKey: 'HOD',
+        title: 'Folk HOD',
+        icon: '👑',
+        headerBg: 'bg-amber-100/90 dark:bg-amber-950/90 border-amber-300 dark:border-amber-800',
+        headerText: 'text-amber-950 dark:text-amber-200 font-extrabold',
+        countBg: 'bg-amber-200 text-amber-950 border border-amber-300 dark:bg-amber-900 dark:text-amber-100',
+        selectClass: 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-300 dark:border-slate-700 focus:border-amber-500'
+      },
+      {
+        roleKey: 'FOLK_GUIDE',
+        title: 'Folk Guide',
+        icon: '🚩',
+        headerBg: 'bg-emerald-100/90 dark:bg-emerald-950/90 border-emerald-300 dark:border-emerald-800',
+        headerText: 'text-emerald-950 dark:text-emerald-200 font-extrabold',
+        countBg: 'bg-emerald-200 text-emerald-950 border border-emerald-300 dark:bg-emerald-900 dark:text-emerald-100',
+        selectClass: 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-300 dark:border-slate-700 focus:border-emerald-500'
+      },
+      {
+        roleKey: 'FOLK_ENABLER_MALE',
+        title: 'Folk Enablers (Male)',
+        icon: '👨',
+        headerBg: 'bg-indigo-100/90 dark:bg-indigo-950/90 border-indigo-300 dark:border-indigo-800',
+        headerText: 'text-indigo-950 dark:text-indigo-200 font-extrabold',
+        countBg: 'bg-indigo-200 text-indigo-950 border border-indigo-300 dark:bg-indigo-900 dark:text-indigo-100',
+        selectClass: 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-300 dark:border-slate-700 focus:border-indigo-500'
+      },
+      {
+        roleKey: 'FOLK_ENABLER_FEMALE',
+        title: 'Folk Enablers (Female)',
+        icon: '👩',
+        headerBg: 'bg-rose-100/90 dark:bg-rose-950/90 border-rose-300 dark:border-rose-800',
+        headerText: 'text-rose-950 dark:text-rose-200 font-extrabold',
+        countBg: 'bg-rose-200 text-rose-950 border border-rose-300 dark:bg-rose-900 dark:text-rose-100',
+        selectClass: 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-300 dark:border-slate-700 focus:border-rose-500'
+      }
+    ];
+
+    if (currentUserRole === 'HOD') return allCols;
+    if (currentUserRole === 'FOLK_GUIDE') return allCols.filter(c => c.roleKey === 'FOLK_GUIDE' || c.roleKey === 'FOLK_ENABLER_MALE');
+    if (currentUserRole === 'FOLK_ENABLER_MALE') return allCols.filter(c => c.roleKey === 'FOLK_ENABLER_MALE');
+    if (currentUserRole === 'FOLK_ENABLER_FEMALE') return allCols.filter(c => c.roleKey === 'FOLK_ENABLER_FEMALE');
+    return allCols;
+  }, [currentUserRole]);
+
+  const adminsByRole = useMemo(() => {
+    const map: Record<string, any[]> = {
+      HOD: [],
+      FOLK_GUIDE: [],
+      FOLK_ENABLER_MALE: [],
+      FOLK_ENABLER_FEMALE: []
+    };
+    admins.forEach(a => {
+      // Exclude logged in admin's own email from roster columns
+      if (currentUserEmail && a.email?.toLowerCase() === currentUserEmail.toLowerCase()) {
+        return;
+      }
+      let r = a.role || 'HOD';
+      if (r === 'FOLK_ENABLER') r = 'FOLK_ENABLER_MALE';
+      if (r in map) {
+        map[r].push(a);
+      } else {
+        map.FOLK_ENABLER_MALE.push(a);
+      }
+    });
+    return map;
+  }, [admins, currentUserEmail]);
+
+  const allowedRolesToAssign = useMemo(() => {
+    if (currentUserRole === 'HOD') {
+      return [
+        { value: 'HOD', label: '👑 HOD (Folk HOD)' },
+        { value: 'FOLK_GUIDE', label: '🚩 Folk Guide' },
+        { value: 'FOLK_ENABLER_MALE', label: '♂️ Folk Enablers (Male)' },
+        { value: 'FOLK_ENABLER_FEMALE', label: '♀️ Folk Enablers (Female)' },
+      ];
+    }
+    if (currentUserRole === 'FOLK_GUIDE') {
+      return [
+        { value: 'FOLK_GUIDE', label: '🚩 Folk Guide' },
+        { value: 'FOLK_ENABLER_MALE', label: '♂️ Folk Enablers (Male)' },
+      ];
+    }
+    if (currentUserRole === 'FOLK_ENABLER_MALE') {
+      return [
+        { value: 'FOLK_ENABLER_MALE', label: '♂️ Folk Enablers (Male)' },
+      ];
+    }
+    if (currentUserRole === 'FOLK_ENABLER_FEMALE') {
+      return [
+        { value: 'FOLK_ENABLER_FEMALE', label: '♀️ Folk Enablers (Female)' },
+      ];
+    }
+    return [
+      { value: 'FOLK_ENABLER_MALE', label: '♂️ Folk Enablers (Male)' },
+    ];
+  }, [currentUserRole]);
+
   if (isLoadingSettings) {
     return <div className="p-10 text-slate-400 font-bold text-center">Loading Settings & CMS...</div>;
   }
@@ -558,11 +737,31 @@ export default function AdminSettings() {
                   </div>
                   <div>
                     <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Starting Date</label>
-                    <input name="challenge_start_date" type="date" defaultValue={settings.challenge_start_date} className="w-full p-4 rounded-xl bg-slate-50 border-none outline-none font-bold text-slate-700" required />
+                    <div className="relative">
+                      <input 
+                        name="challenge_start_date" 
+                        type="date" 
+                        defaultValue={settings.challenge_start_date} 
+                        onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
+                        className="w-full p-4 pr-12 rounded-xl border outline-none font-extrabold text-sm cursor-pointer admin-date-field" 
+                        required 
+                      />
+                      <Calendar size={18} className="absolute right-4 top-1/2 -translate-y-1/2 admin-date-icon pointer-events-none" />
+                    </div>
                   </div>
                   <div>
                     <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">End Date</label>
-                    <input name="challenge_end_date" type="date" defaultValue={settings.challenge_end_date} className="w-full p-4 rounded-xl bg-slate-50 border-none outline-none font-bold text-slate-700" required />
+                    <div className="relative">
+                      <input 
+                        name="challenge_end_date" 
+                        type="date" 
+                        defaultValue={settings.challenge_end_date} 
+                        onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
+                        className="w-full p-4 pr-12 rounded-xl border outline-none font-extrabold text-sm cursor-pointer admin-date-field" 
+                        required 
+                      />
+                      <Calendar size={18} className="absolute right-4 top-1/2 -translate-y-1/2 admin-date-icon pointer-events-none" />
+                    </div>
                   </div>
                   <div className="col-span-2">
                     <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Campaign Cover Photo (URL)</label>
@@ -611,30 +810,165 @@ export default function AdminSettings() {
           </motion.div>
         )}
 
-        {/* --- TAB 2: ADMIN WHITELIST --- */}
+        {/* --- TAB 2: ADMIN WHITELIST & HIERARCHY --- */}
         {activeTab === 'whitelist' && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-            <section className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-xl max-w-2xl">
-              <div className="flex items-center gap-2 mb-8">
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8 max-w-7xl">
+            {/* Simple One-Liner Top Status Header */}
+            <div className="flex items-center gap-2 pb-3 border-b border-slate-200 dark:border-slate-800">
+              <span className="text-xl">
+                {currentUserRole === 'HOD' ? '👑' : currentUserRole === 'FOLK_GUIDE' ? '🚩' : currentUserRole === 'FOLK_ENABLER_FEMALE' ? '👩' : '👨'}
+              </span>
+              <h3 className="text-lg font-black text-slate-900 dark:text-slate-100">
+                You are logged in as {getRoleLabel(currentUserRole)}
+              </h3>
+            </div>
+
+            {/* Category Diagnostics & Stats Bar (Filtered by Viewer Scope) */}
+            <div className="flex flex-wrap gap-3">
+              {visibleStats.map(s => (
+                <div key={s.key} className={`flex-1 min-w-[140px] bg-white dark:bg-slate-900 p-4 rounded-3xl border ${s.borderClass} shadow-md text-center`}>
+                  <span className={`text-2xl font-black ${s.colorClass}`}>
+                    {s.icon ? `${s.icon} ` : ''}{s.count}
+                  </span>
+                  <p className="text-[10px] font-black text-slate-400 uppercase mt-1 tracking-wider">{s.title}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Add New Admin Section */}
+            <section className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-xl space-y-6">
+              <div className="flex items-center gap-2 pb-4 border-b border-slate-100">
                 <Shield className="text-emerald-600" size={24} />
-                <h3 className="text-xl font-black text-slate-800">Admin Whitelist</h3>
+                <div>
+                  <h3 className="text-xl font-black text-slate-800">Add New Admin Whitelist Entry</h3>
+                  <p className="text-xs text-slate-500 font-bold">Assign permission level according to your authorized hierarchy</p>
+                </div>
               </div>
               
-              <form onSubmit={handleAddAdmin} className="flex gap-2 mb-6">
-                <input name="email" type="email" required placeholder="admin@email.com" className="flex-1 p-4 rounded-xl bg-slate-50 border-none outline-none font-bold text-slate-700" />
-                <button type="submit" className="px-6 py-4 bg-emerald-600 text-white rounded-xl font-black shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all cursor-pointer">
-                  <Plus size={20} />
-                </button>
-              </form>
+              <form onSubmit={handleAddAdmin} className="grid grid-cols-1 sm:grid-cols-12 gap-4">
+                <div className="sm:col-span-6">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Admin Email Address</label>
+                  <input 
+                    name="email" 
+                    type="email" 
+                    required 
+                    placeholder="admin@email.com" 
+                    className="w-full p-4 rounded-xl bg-slate-50 border border-slate-200/60 outline-none font-bold text-slate-700 text-sm" 
+                  />
+                </div>
 
-              <div className="space-y-2">
-                {admins.map(a => (
-                  <div key={a.id} className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-100">
-                    <span className="font-bold text-slate-700 text-sm">{a.email}</span>
-                    <button onClick={() => handleRemoveAdmin(a.id)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-all cursor-pointer"><X size={16} /></button>
-                  </div>
-                ))}
+                <div className="sm:col-span-4">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Admin Category / Hierarchy</label>
+                  <select
+                    name="role"
+                    value={newAdminRole}
+                    onChange={(e) => setNewAdminRole(e.target.value)}
+                    className="w-full p-4 rounded-xl bg-slate-50 border border-slate-200/60 outline-none font-bold text-slate-700 text-sm cursor-pointer"
+                  >
+                    {allowedRolesToAssign.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="sm:col-span-2 flex items-end">
+                  <button 
+                    type="submit" 
+                    className="w-full py-4 bg-emerald-600 text-white rounded-xl font-black shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all cursor-pointer flex items-center justify-center gap-1 text-sm"
+                  >
+                    <Plus size={18} /> Add
+                  </button>
+                </div>
+              </form>
+            </section>
+
+            {/* Whitelisted Admins Categorized Roster (Scoped by Role) */}
+            <section className="bg-white rounded-[2.5rem] p-6 sm:p-8 border border-slate-100 shadow-xl space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                <div>
+                  <h3 className="text-xl font-black text-slate-800">Active Admin Roster</h3>
+                  <p className="text-xs text-slate-500 font-bold">Hierarchy roster & privilege controls</p>
+                </div>
+                <span className="text-xs font-black text-indigo-600 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-full self-start sm:self-auto">
+                  {admins.length} Total Whitelisted Emails
+                </span>
               </div>
+
+              {admins.length === 0 ? (
+                <div className="text-center py-8 text-slate-400 font-bold text-sm">No whitelisted admins found.</div>
+              ) : (
+                <div className={`grid grid-cols-1 ${visibleRoleColumns.length >= 4 ? 'md:grid-cols-2 xl:grid-cols-4' : visibleRoleColumns.length === 2 ? 'md:grid-cols-2' : 'grid-cols-1'} gap-5`}>
+                  {visibleRoleColumns.map(col => {
+                    const list = adminsByRole[col.roleKey] || [];
+                    return (
+                      <div key={col.roleKey} className="bg-slate-50/70 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-4 flex flex-col space-y-4 shadow-xs">
+                        {/* Column Header */}
+                        <div className={`p-3.5 rounded-2xl border flex items-center justify-between shadow-2xs ${col.headerBg}`}>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">{col.icon}</span>
+                            <span className={`font-black text-xs sm:text-sm ${col.headerText}`}>{col.title}</span>
+                          </div>
+                          <span className={`px-2.5 py-0.5 rounded-full font-black text-xs ${col.countBg}`}>
+                            {list.length}
+                          </span>
+                        </div>
+
+                        {/* Admin List Cards */}
+                        <div className="flex-1 space-y-3 min-h-[140px]">
+                          {list.length === 0 ? (
+                            <div className="h-full flex items-center justify-center p-6 text-center text-xs font-bold text-slate-400 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl bg-white/50 dark:bg-slate-900/30">
+                              No admins in this category
+                            </div>
+                          ) : (
+                            list.map(a => (
+                              <div key={a.id} className="bg-white dark:bg-slate-800/90 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 shadow-2xs flex flex-col space-y-2.5 transition-all hover:shadow-md">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs flex-shrink-0 shadow-2xs ${col.countBg}`}>
+                                      {a.email?.[0]?.toUpperCase() || 'A'}
+                                    </div>
+                                    <span className="font-bold text-slate-800 dark:text-slate-100 text-xs truncate" title={a.email}>
+                                      {a.email}
+                                    </span>
+                                  </div>
+
+                                  {currentUserRole === 'HOD' && (
+                                    <button 
+                                      onClick={() => handleRemoveAdmin(a.id)} 
+                                      className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/60 rounded-xl transition-all cursor-pointer flex-shrink-0 border border-transparent hover:border-red-200"
+                                      title="Remove Admin (HOD Privilege)"
+                                    >
+                                      <X size={15} />
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Category Modifier Selector */}
+                                <div className="pt-2 border-t border-slate-100 dark:border-slate-700/50">
+                                  <label className="block text-[9px] font-black text-slate-400 dark:text-slate-400 uppercase tracking-wider mb-1">
+                                    Change Role / Privilege
+                                  </label>
+                                  <select
+                                    value={a.role || 'HOD'}
+                                    onChange={(e) => handleUpdateAdminRole(a.id, e.target.value)}
+                                    className={`w-full px-3 py-2 rounded-xl text-xs font-black border outline-none cursor-pointer transition-all ${col.selectClass}`}
+                                  >
+                                    {allowedRolesToAssign.map(opt => (
+                                      <option key={opt.value} value={opt.value} className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-bold">
+                                        {opt.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </section>
           </motion.div>
         )}

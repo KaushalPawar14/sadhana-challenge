@@ -15,6 +15,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const { user, signOut } = useAuthStore();
   const [challengeImageUrl, setChallengeImageUrl] = useState<string>('');
 
+  const [currentUserRole, setCurrentUserRole] = useState<string>('HOD');
+
   useEffect(() => {
     async function fetchChallengeImage() {
       try {
@@ -30,8 +32,30 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         console.error('Error loading challenge cover image:', err);
       }
     }
+    async function fetchRole() {
+      try {
+        const res = await fetch('/api/admin-whitelist');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.currentUserRole) {
+            setCurrentUserRole(data.currentUserRole);
+          }
+        }
+      } catch (err) {}
+    }
     fetchChallengeImage();
+    fetchRole();
   }, []);
+
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case 'HOD': return '👑 Folk HOD';
+      case 'FOLK_GUIDE': return '🚩 Folk Guide';
+      case 'FOLK_ENABLER_MALE': return '♂️ Male Enabler';
+      case 'FOLK_ENABLER_FEMALE': return '♀️ Female Enabler';
+      default: return 'Admin';
+    }
+  };
 
   const menuItems = [
     { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
@@ -135,7 +159,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-bold text-white truncate">{user?.user_metadata?.full_name || 'Admin'}</p>
-                <p className="text-[10px] text-slate-500 truncate">{user?.email}</p>
+                <p className="text-[10px] text-slate-500 truncate mb-1">{user?.email}</p>
+                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-800/60 inline-block">
+                  {getRoleLabel(currentUserRole)}
+                </span>
               </div>
             </div>
             <Link 

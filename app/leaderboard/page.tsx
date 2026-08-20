@@ -25,6 +25,7 @@ export default function LeaderboardPage() {
   const [quizSubmissions, setQuizSubmissions] = useState<any[]>([]);
   const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [logsTodayCount, setLogsTodayCount] = useState<number>(0);
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
 
   // Stable client setup to prevent warnings and auth drops
   const [supabase] = useState(() => createBrowserClient(
@@ -33,6 +34,16 @@ export default function LeaderboardPage() {
   ));
 
   useEffect(() => {
+    // Fetch logged in user's admin role if any
+    fetch('/api/admin-whitelist')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.currentUserRole) {
+          setCurrentUserRole(data.currentUserRole);
+        }
+      })
+      .catch(() => {});
+
     // Trigger auto-fulfillment check for missing logs using recorded in-app chanting
     fetch('/api/sync-chanting')
       .then(res => res.json())
@@ -90,7 +101,8 @@ export default function LeaderboardPage() {
           full_name,
           avatar_url,
           department,
-          streak_count
+          streak_count,
+          gender
         )
       `)
       .order('submitted_at', { ascending: false })
@@ -109,7 +121,8 @@ export default function LeaderboardPage() {
           full_name,
           avatar_url,
           department,
-          streak_count
+          streak_count,
+          gender
         )
       `)
       .order('given_at', { ascending: false })
@@ -133,7 +146,8 @@ export default function LeaderboardPage() {
           full_name,
           avatar_url,
           department,
-          streak_count
+          streak_count,
+          gender
         )
       `)
       .eq('is_completed', true)
@@ -160,7 +174,8 @@ export default function LeaderboardPage() {
           full_name,
           avatar_url,
           department,
-          streak_count
+          streak_count,
+          gender
         )
       `)
       .order('submitted_at', { ascending: false })
@@ -234,14 +249,24 @@ export default function LeaderboardPage() {
       .subscribe();
   };
 
+  const scopedUsers = useMemo(() => {
+    if (currentUserRole === 'FOLK_GUIDE' || currentUserRole === 'FOLK_ENABLER_MALE') {
+      return users.filter(u => u.gender === 'M');
+    }
+    if (currentUserRole === 'FOLK_ENABLER_FEMALE') {
+      return users.filter(u => u.gender === 'F');
+    }
+    return users;
+  }, [users, currentUserRole]);
+
   const sortedUsers = useMemo(() => {
-    return [...users].sort((a, b) => {
+    return [...scopedUsers].sort((a, b) => {
       if (b.total_points !== a.total_points) return b.total_points - a.total_points;
       const dateA = a.last_log_date ? new Date(a.last_log_date).getTime() : Infinity;
       const dateB = b.last_log_date ? new Date(b.last_log_date).getTime() : Infinity;
       return dateA - dateB;
     });
-  }, [users]);
+  }, [scopedUsers]);
 
   const parseLocalDate = (dateStr: string) => {
     if (!dateStr) return new Date();
@@ -431,9 +456,17 @@ export default function LeaderboardPage() {
       });
     });
 
+    // Filter combined events by gender scope if admin role is non-HOD
+    let filteredEvents = events;
+    if (currentUserRole === 'FOLK_GUIDE' || currentUserRole === 'FOLK_ENABLER_MALE') {
+      filteredEvents = events.filter(e => e.user?.gender === 'M');
+    } else if (currentUserRole === 'FOLK_ENABLER_FEMALE') {
+      filteredEvents = events.filter(e => e.user?.gender === 'F');
+    }
+
     // Sort combined events descending by timestamp
-    return events.sort((a, b) => b.timestamp - a.timestamp).slice(0, 10);
-  }, [liveActivities, users, bonusEvents, liveListened, quizSubmissions]);
+    return filteredEvents.sort((a, b) => b.timestamp - a.timestamp).slice(0, 10);
+  }, [liveActivities, users, bonusEvents, liveListened, quizSubmissions, currentUserRole]);
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto min-h-screen bg-slate-50/30">
@@ -526,13 +559,13 @@ export default function LeaderboardPage() {
                   {logsTodayCount === 0 ? (
                     <span>Start filling your report today! 🎯</span>
                   ) : (
-                    <span><span className="font-extrabold text-emerald-600">{logsTodayCount}</span> out of <span className="font-extrabold text-amber-900">{users.length}</span> participants filled today's report</span>
+                    <span><span className="font-extrabold text-emerald-600">{logsTodayCount}</span> out of <span className="font-extrabold text-amber-900">{sortedUsers.length}</span> participants filled today's report</span>
                   )}
                 </p>
               </div>
             </div>
             <span className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full bg-white/80 border border-amber-200 text-amber-800 shadow-2xs whitespace-nowrap">
-              {users.length} Participants
+              {sortedUsers.length} Participants
             </span>
           </div>
 

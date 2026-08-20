@@ -1,8 +1,12 @@
--- Admin whitelist
+-- Admin whitelist with categories (HOD, FOLK_GUIDE, FOLK_ENABLER)
 CREATE TABLE admin_emails (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  email TEXT UNIQUE NOT NULL
+  email TEXT UNIQUE NOT NULL,
+  role TEXT DEFAULT 'HOD' CHECK (role IN ('HOD', 'FOLK_GUIDE', 'FOLK_ENABLER'))
 );
+
+-- Migration for existing deployments
+ALTER TABLE admin_emails ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'HOD';
 
 -- Users / students
 CREATE TABLE users (
