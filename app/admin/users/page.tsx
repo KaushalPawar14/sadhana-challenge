@@ -5,13 +5,17 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabaseClient';
 import {
   Search, Edit3, Trash2, Award, Plus,
-  Download, History, X, Save, AlertTriangle
+  Download, History, X, Save, AlertTriangle, Filter, RotateCcw, Flame
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export default function AdminUsers() {
   const [users, setUsers] = useState<any[]>([]);
   const [search, setSearch] = useState('');
+  const [genderFilter, setGenderFilter] = useState<string>('ALL');
+  const [deptFilter, setDeptFilter] = useState<string>('ALL');
+  const [pointsFilter, setPointsFilter] = useState<string>('ALL');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [isLoading, setIsLoading] = useState(true);
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [modalType, setModalType] = useState<'bonus' | 'award' | 'history' | null>(null);
@@ -53,10 +57,106 @@ export default function AdminUsers() {
     setIsLoading(false);
   };
 
-  const filteredUsers = users.filter(u =>
-    u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-    u.department?.toLowerCase().includes(search.toLowerCase())
-  );
+  const uniqueDepartments = Array.from(
+    new Set(users.map(u => u.department).filter(Boolean))
+  ).sort() as string[];
+
+  const hasActiveFilters =
+    search.trim() !== '' ||
+    genderFilter !== 'ALL' ||
+    deptFilter !== 'ALL' ||
+    pointsFilter !== 'ALL' ||
+    statusFilter !== 'ALL';
+
+  const resetFilters = () => {
+    setSearch('');
+    setGenderFilter('ALL');
+    setDeptFilter('ALL');
+    setPointsFilter('ALL');
+    setStatusFilter('ALL');
+  };
+
+  const filteredUsers = users.filter(u => {
+    // 1. Text search filter
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      const matchName = u.full_name?.toLowerCase().includes(q);
+      const matchEmail = u.email?.toLowerCase().includes(q);
+      const matchDept = u.department?.toLowerCase().includes(q);
+      const matchMobile = u.mobile?.includes(q);
+      if (!matchName && !matchEmail && !matchDept && !matchMobile) return false;
+    }
+
+    // 2. Gender filter
+    if (genderFilter !== 'ALL') {
+      if (genderFilter === 'M' && u.gender !== 'M') return false;
+      if (genderFilter === 'F' && u.gender !== 'F') return false;
+      if (genderFilter === 'UNASSIGNED' && (u.gender === 'M' || u.gender === 'F')) return false;
+    }
+
+    // 3. Department filter
+    if (deptFilter !== 'ALL') {
+      if (u.department?.toLowerCase() !== deptFilter.toLowerCase()) return false;
+    }
+
+    // 4. Points filter
+    if (pointsFilter !== 'ALL') {
+      const pts = u.total_points || 0;
+      if (pointsFilter === '100+' && pts < 100) return false;
+      if (pointsFilter === '500+' && pts < 500) return false;
+      if (pointsFilter === '0' && pts !== 0) return false;
+    }
+
+    // 5. Status filter
+    if (statusFilter !== 'ALL') {
+      if (statusFilter === 'ONBOARDED' && !u.is_onboarded) return false;
+      if (statusFilter === 'PENDING' && u.is_onboarded) return false;
+    }
+
+    return true;
+  });
+
+  const handleGenderChange = async (userId: string, newGender: string) => {
+    try {
+      const res = await fetch('/api/admin/update-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, gender: newGender }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to update gender');
+      }
+
+      toast.success(`Gender updated to ${newGender}`);
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, gender: newGender } : u));
+    } catch (err: any) {
+      console.error("Gender update error:", err);
+      toast.error(err.message || 'Failed to update gender');
+    }
+  };
+
+  const handleTargetChantingChange = async (userId: string, newRounds: number) => {
+    try {
+      const res = await fetch('/api/admin/update-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, target_chanting: newRounds }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to update commitment rounds');
+      }
+
+      toast.success(`Target rounds updated to ${newRounds}`);
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, target_chanting: newRounds } : u));
+    } catch (err: any) {
+      console.error("Target chanting update error:", err);
+      toast.error(err.message || 'Failed to update commitment rounds');
+    }
+  };
 
   const handleDelete = async (id: string) => {
     if (!confirm("This will remove the student and all their data. This cannot be undone. Proceed?")) return;
@@ -73,7 +173,6 @@ export default function AdminUsers() {
     const formData = new FormData(e.target);
     const points = parseInt(formData.get('points') as string);
     const title = formData.get('title') as string;
-    const today = new Date().toISOString().split('T')[0];
 
     // 1. Insert the bonus point record
     const { error: bonusError } = await supabase.from('bonus_points').insert({
@@ -83,14 +182,11 @@ export default function AdminUsers() {
     });
 
     if (bonusError) {
-      toast.error("Failed to record bonus entry");
+      toast.error("Failed to record bonus entry: " + bonusError.message);
       return;
     }
 
-
-
-    // 3. Update the User's total_points
-    // We fetch fresh data to prevent "race conditions" (two admins updating at once)
+    // 2. Fetch fresh user data to prevent race conditions
     const { data: freshUser } = await supabase
       .from('users')
       .select('total_points')
@@ -99,17 +195,22 @@ export default function AdminUsers() {
 
     const newTotal = (freshUser?.total_points || 0) + points;
 
-    const { error: userError } = await supabase
-      .from('users')
-      .update({ total_points: newTotal })
-      .eq('id', selectedUser.id);
+    // 3. Update the User's total_points securely via admin endpoint
+    try {
+      const res = await fetch('/api/admin/update-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: selectedUser.id, total_points: newTotal }),
+      });
 
-    if (userError) {
-      toast.error("Failed to update user total points");
-    } else {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update total points");
+
       toast.success(`Awarded ${points} points for ${title}!`);
       setModalType(null);
       fetchUsers();
+    } catch (userError: any) {
+      toast.error(userError.message || "Failed to update user total points");
     }
   };
 
@@ -133,11 +234,21 @@ export default function AdminUsers() {
   };
 
   const exportToCSV = () => {
-    const headers = ['Name', 'Email', 'Department', 'Points', 'Streak', 'Today Reading (min)', 'Total Reading (min)', 'Joined'];
+    const headers = ['Name', 'Email', 'Mobile', 'Gender', 'Department', 'Target Chanting Rounds', 'Points', 'Streak', 'Today Reading (min)', 'Total Reading (min)', 'Joined'];
     const rows = filteredUsers.map(u => [
-      u.full_name, u.email, u.department, u.total_points, u.streak_count, u.todayReadingMinutes || 0, u.totalReadingMinutes || 0, u.created_at
+      `"${u.full_name || ''}"`,
+      `"${u.email || ''}"`,
+      `"${u.mobile || ''}"`,
+      `"${u.gender || ''}"`,
+      `"${u.department || ''}"`,
+      u.target_chanting || 16,
+      u.total_points,
+      u.streak_count,
+      u.todayReadingMinutes || 0,
+      u.totalReadingMinutes || 0,
+      u.created_at
     ]);
-    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+    const csvContent = [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
@@ -162,17 +273,124 @@ export default function AdminUsers() {
         </div>
       </div>
 
-      {/* Search & Stats Bar */}
-      <div className="flex gap-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-          <input
-            type="text"
-            placeholder="Search by name or department..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-12 pr-4 py-4 bg-white rounded-2xl border border-slate-100 shadow-sm focus:border-indigo-500 outline-none transition-all font-bold"
-          />
+      {/* Search & Filter Controls Bar */}
+      <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-xl space-y-5">
+        <div className="flex flex-col md:flex-row gap-4 items-center">
+          <div className="flex-1 relative w-full">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+            <input
+              type="text"
+              placeholder="Search by student name, email, mobile number, department..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-12 pr-10 py-3.5 bg-slate-50 rounded-2xl border border-slate-200/60 focus:border-indigo-500 focus:bg-white outline-none transition-all font-bold text-sm text-slate-800"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            )}
+          </div>
+
+          {hasActiveFilters && (
+            <button
+              onClick={resetFilters}
+              className="flex items-center gap-2 px-4 py-3.5 bg-indigo-50 text-indigo-700 rounded-2xl font-bold text-xs hover:bg-indigo-100 transition-all cursor-pointer whitespace-nowrap"
+            >
+              <RotateCcw size={16} /> Reset Filters
+            </button>
+          )}
+        </div>
+
+        {/* Multi-Select Filters */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-1">
+          {/* Gender Filter */}
+          <div>
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+              <Filter size={10} /> Gender
+            </label>
+            <select
+              value={genderFilter}
+              onChange={(e) => setGenderFilter(e.target.value)}
+              className={`w-full p-3 rounded-xl border text-xs font-bold outline-none focus:border-indigo-500 cursor-pointer transition-all ${
+                genderFilter !== 'ALL' ? 'bg-indigo-50/70 text-indigo-800 border-indigo-300' : 'bg-slate-50 border-slate-200/60 text-slate-700'
+              }`}
+            >
+              <option value="ALL">All Genders</option>
+              <option value="M">👨 Male (M)</option>
+              <option value="F">👩 Female (F)</option>
+              <option value="UNASSIGNED">❓ Unassigned</option>
+            </select>
+          </div>
+
+          {/* Department Filter */}
+          <div>
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+              <Filter size={10} /> Department
+            </label>
+            <select
+              value={deptFilter}
+              onChange={(e) => setDeptFilter(e.target.value)}
+              className={`w-full p-3 rounded-xl border text-xs font-bold outline-none focus:border-indigo-500 cursor-pointer transition-all ${
+                deptFilter !== 'ALL' ? 'bg-indigo-50/70 text-indigo-800 border-indigo-300' : 'bg-slate-50 border-slate-200/60 text-slate-700'
+              }`}
+            >
+              <option value="ALL">All Departments</option>
+              {uniqueDepartments.map((dept: string) => (
+                <option key={dept} value={dept}>{dept}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Points Filter */}
+          <div>
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+              <Filter size={10} /> Points
+            </label>
+            <select
+              value={pointsFilter}
+              onChange={(e) => setPointsFilter(e.target.value)}
+              className={`w-full p-3 rounded-xl border text-xs font-bold outline-none focus:border-indigo-500 cursor-pointer transition-all ${
+                pointsFilter !== 'ALL' ? 'bg-indigo-50/70 text-indigo-800 border-indigo-300' : 'bg-slate-50 border-slate-200/60 text-slate-700'
+              }`}
+            >
+              <option value="ALL">All Points</option>
+              <option value="100+">🏆 ≥ 100 Points</option>
+              <option value="500+">👑 ≥ 500 Points</option>
+              <option value="0">0 Points</option>
+            </select>
+          </div>
+
+          {/* Status Filter */}
+          <div>
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+              <Filter size={10} /> Status
+            </label>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className={`w-full p-3 rounded-xl border text-xs font-bold outline-none focus:border-indigo-500 cursor-pointer transition-all ${
+                statusFilter !== 'ALL' ? 'bg-indigo-50/70 text-indigo-800 border-indigo-300' : 'bg-slate-50 border-slate-200/60 text-slate-700'
+              }`}
+            >
+              <option value="ALL">All Status</option>
+              <option value="ONBOARDED">✅ Onboarded</option>
+              <option value="PENDING">⏳ Pending</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Counter Summary */}
+        <div className="flex items-center justify-between text-xs font-bold text-slate-500 pt-2 border-t border-slate-100">
+          <span>Showing <strong className="text-indigo-600 font-black">{filteredUsers.length}</strong> of <strong className="text-slate-800 font-black">{users.length}</strong> students</span>
+          {hasActiveFilters && (
+            <span className="text-[10px] font-black uppercase text-amber-700 bg-amber-50 px-3 py-1 rounded-full border border-amber-200">
+              Active Filters Applied
+            </span>
+          )}
         </div>
       </div>
 
@@ -185,6 +403,8 @@ export default function AdminUsers() {
             <thead className="bg-slate-50">
               <tr>
                 <th className="p-6 font-black text-slate-400 uppercase text-[10px] tracking-widest">Student</th>
+                <th className="p-6 font-black text-slate-400 uppercase text-[10px] tracking-widest">Gender</th>
+                <th className="p-6 font-black text-slate-400 uppercase text-[10px] tracking-widest">Commitment</th>
                 <th className="p-6 font-black text-slate-400 uppercase text-[10px] tracking-widest">Department</th>
                 <th className="p-6 font-black text-slate-400 uppercase text-[10px] tracking-widest">Progress</th>
                 <th className="p-6 font-black text-slate-400 uppercase text-[10px] tracking-widest">Reading Time</th>
@@ -196,7 +416,7 @@ export default function AdminUsers() {
               {isLoading ? (
                 Array(5).fill(0).map((_, i) => (
                   <tr key={i} className="animate-pulse">
-                    <td colSpan={6} className="p-10">
+                    <td colSpan={8} className="p-10">
                       <div className="h-4 bg-slate-100 rounded w-full" />
                     </td>
                   </tr>
@@ -210,11 +430,52 @@ export default function AdminUsers() {
                       </div>
                       <div>
                         <p className="font-bold text-slate-900">{u.full_name}</p>
-                        <p className="text-xs text-slate-400">{u.email}</p>
+                        <p className="text-xs text-slate-400">{u.email} {u.mobile ? `• 📱 ${u.mobile}` : ''}</p>
                       </div>
                     </div>
                   </td>
+
+                  {/* Gender Selector */}
+                  <td className="p-6">
+                    <select
+                      value={u.gender || ''}
+                      onChange={(e) => handleGenderChange(u.id, e.target.value)}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-xs border outline-none cursor-pointer transition-all ${
+                        u.gender === 'M'
+                          ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                          : u.gender === 'F'
+                          ? 'bg-pink-50 text-pink-700 border-pink-200'
+                          : 'bg-amber-50 text-amber-700 border-amber-300 font-medium'
+                      }`}
+                    >
+                      <option value="" disabled>-- Gender --</option>
+                      <option value="M">👨 Male (M)</option>
+                      <option value="F">👩 Female (F)</option>
+                    </select>
+                  </td>
+
+                  {/* Editable Commitment Rounds */}
+                  <td className="p-6">
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="1"
+                        max="108"
+                        defaultValue={u.target_chanting || 16}
+                        onBlur={(e) => {
+                          const val = parseInt(e.target.value);
+                          if (val > 0 && val !== u.target_chanting) {
+                            handleTargetChantingChange(u.id, val);
+                          }
+                        }}
+                        className="w-16 p-1.5 rounded-xl text-xs font-black bg-amber-50/70 border border-amber-200/80 text-amber-800 outline-none focus:border-amber-500 text-center"
+                      />
+                      <span className="text-[10px] font-black text-slate-400 uppercase">rds</span>
+                    </div>
+                  </td>
+
                   <td className="p-6 font-bold text-slate-600">{u.department}</td>
+                  
                   <td className="p-6">
                     <div className="flex items-center gap-4">
                       <div>
@@ -296,7 +557,7 @@ export default function AdminUsers() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="font-bold text-slate-900 truncate">{u.full_name}</p>
-                    <p className="text-xs text-slate-400 truncate">{u.email}</p>
+                    <p className="text-xs text-slate-400 truncate">{u.email} {u.mobile ? `• 📱 ${u.mobile}` : ''}</p>
                   </div>
                 </div>
                 
@@ -309,13 +570,46 @@ export default function AdminUsers() {
                     <p className="font-black text-orange-500">{u.streak_count} days</p>
                     <p className="text-[9px] text-slate-400 font-black uppercase tracking-wider">Streak</p>
                   </div>
+
+                  {/* Gender Selector */}
                   <div>
-                    <p className="font-black text-indigo-600">{u.todayReadingMinutes || 0} min</p>
-                    <p className="text-[9px] text-slate-400 font-black uppercase tracking-wider">Today's Read</p>
+                    <select
+                      value={u.gender || ''}
+                      onChange={(e) => handleGenderChange(u.id, e.target.value)}
+                      className={`text-xs font-bold rounded-lg px-2 py-1 border outline-none cursor-pointer ${
+                        u.gender === 'M'
+                          ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                          : u.gender === 'F'
+                          ? 'bg-pink-50 text-pink-700 border-pink-200'
+                          : 'bg-amber-50 text-amber-700 border-amber-300'
+                      }`}
+                    >
+                      <option value="" disabled>-- Gender --</option>
+                      <option value="M">👨 Male (M)</option>
+                      <option value="F">👩 Female (F)</option>
+                    </select>
+                    <p className="text-[9px] text-slate-400 font-black uppercase tracking-wider mt-0.5">Gender</p>
                   </div>
+
+                  {/* Editable Commitment */}
                   <div>
-                    <p className="font-black text-slate-750">{u.totalReadingMinutes || 0} min</p>
-                    <p className="text-[9px] text-slate-400 font-black uppercase tracking-wider">Total Read</p>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min="1"
+                        max="108"
+                        defaultValue={u.target_chanting || 16}
+                        onBlur={(e) => {
+                          const val = parseInt(e.target.value);
+                          if (val > 0 && val !== u.target_chanting) {
+                            handleTargetChantingChange(u.id, val);
+                          }
+                        }}
+                        className="w-14 p-1 rounded-lg text-xs font-black bg-white border border-slate-200 outline-none focus:border-indigo-500 text-center"
+                      />
+                      <span className="text-[10px] font-bold text-slate-600">rds</span>
+                    </div>
+                    <p className="text-[9px] text-slate-400 font-black uppercase tracking-wider mt-0.5">Target Rounds</p>
                   </div>
                 </div>
 
@@ -406,7 +700,6 @@ export default function AdminUsers() {
               {modalType === 'history' && (
                 <div className="max-h-96 overflow-y-auto">
                   <p className="text-sm font-bold text-slate-500 mb-4">Showing last 30 logs for {selectedUser.full_name}</p>
-                  {/* Log history list would go here - simplified for space */}
                   <div className="bg-slate-50 p-4 rounded-xl text-center">
                     <p className="text-xs font-bold text-slate-400">Log history and backdating logic goes here.</p>
                   </div>

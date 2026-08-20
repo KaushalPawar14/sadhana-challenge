@@ -14,6 +14,7 @@ const STORAGE_KEY = 'onboarding_draft';
 interface OnboardingData {
   full_name: string;
   mobile: string;
+  gender: string;
   department: string;
   target_chanting: number;
   target_reading: number;
@@ -23,6 +24,7 @@ interface OnboardingData {
 const DEFAULT_DATA: OnboardingData = {
   full_name: '',
   mobile: '',
+  gender: '',
   department: '',
   target_chanting: 16,
   target_reading: 30,
@@ -94,19 +96,25 @@ export default function OnboardingPage() {
       toast.error('Full Name is required');
       return false;
     }
+    if (!formData.mobile || !formData.mobile.trim()) {
+      toast.error('Mobile Number is required');
+      return false;
+    }
+    if (!/^\d{10}$/.test(formData.mobile)) {
+      toast.error('Mobile Number must be exactly 10 digits');
+      return false;
+    }
+    if (!formData.gender) {
+      toast.error('Gender selection (M / F) is required');
+      return false;
+    }
+    if (!['M', 'F'].includes(formData.gender)) {
+      toast.error('Please select valid Gender (M or F)');
+      return false;
+    }
     if (!formData.department || !formData.department.trim()) {
       toast.error('Department is required');
       return false;
-    }
-    if (allowedFields.includes('mobile')) {
-      if (!formData.mobile) {
-        toast.error('Mobile Number is required');
-        return false;
-      }
-      if (!/^\d{10}$/.test(formData.mobile)) {
-        toast.error('Mobile Number must be 10 digits');
-        return false;
-      }
     }
     return true;
   };
@@ -204,18 +212,54 @@ export default function OnboardingPage() {
 
               {isFieldAllowed('mobile') && (
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Mobile Number (10 digits)</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Mobile Number (10 digits) *</label>
                   <input
                     type="tel"
                     name="mobile"
                     value={formData.mobile}
                     onChange={handleChange}
                     maxLength={10}
-                    className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-indigo-500 focus:bg-white transition-all outline-none"
+                    className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-indigo-500 focus:bg-white transition-all outline-none font-medium"
                     placeholder="9876543210"
                   />
                 </div>
               )}
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Gender *</label>
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData(prev => ({ ...prev, gender: 'M' }));
+                      setIsFormDirty(true);
+                    }}
+                    className={`p-4 rounded-2xl font-bold flex items-center justify-center gap-2 border-2 transition-all cursor-pointer ${
+                      formData.gender === 'M'
+                        ? 'border-indigo-600 bg-indigo-50 text-indigo-700 shadow-md shadow-indigo-100 scale-[1.02]'
+                        : 'border-slate-100 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span className="text-xl">👨</span>
+                    <span>Male (M)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData(prev => ({ ...prev, gender: 'F' }));
+                      setIsFormDirty(true);
+                    }}
+                    className={`p-4 rounded-2xl font-bold flex items-center justify-center gap-2 border-2 transition-all cursor-pointer ${
+                      formData.gender === 'F'
+                        ? 'border-pink-600 bg-pink-50 text-pink-700 shadow-md shadow-pink-100 scale-[1.02]'
+                        : 'border-slate-100 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span className="text-xl">👩</span>
+                    <span>Female (F)</span>
+                  </button>
+                </div>
+              </div>
 
               {isFieldAllowed('department') && (
                 <div>

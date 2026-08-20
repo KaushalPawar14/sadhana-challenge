@@ -6,8 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { supabase } from '@/lib/supabaseClient';
 import { 
-  LayoutDashboard, Users, Settings, Award, 
-  ListOrdered, Eye, LogOut, ShieldCheck, BookOpen 
+  LayoutDashboard, Users, Settings, Eye, LogOut, BookOpen 
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -36,13 +35,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   const menuItems = [
     { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
-    // { name: 'Audiobooks', href: '/admin/audiobooks', icon: BookOpen },
-    // { name: 'Books', href: '/admin/books', icon: BookOpen },
     { name: 'Users', href: '/admin/users', icon: Users },
-    { name: 'Settings', href: '/admin/settings', icon: Settings },
-    { name: 'Logs', href: '/admin/logs', icon: ListOrdered },
+    { name: 'Settings & CMS', href: '/admin/settings', icon: Settings },
   ];
-
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -94,19 +89,20 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       </header>
 
       {/* Desktop Sidebar (visible only on desktop) */}
-      <aside className="hidden lg:flex w-64 bg-slate-900 text-slate-300 flex-col fixed inset-y-0 z-50">
-        <div className="p-8 flex flex-col items-center">
+      <aside className="hidden lg:flex w-64 bg-slate-900 text-slate-300 flex-col fixed inset-y-0 z-50 overflow-y-auto">
+        <div className="p-6 flex flex-col items-center">
           {challengeImageUrl ? (
             <img
               src={challengeImageUrl}
               alt="Challenge Logo"
-              className="w-20 h-20 rounded-full object-cover border-4 border-indigo-500/30 shadow-lg shadow-indigo-500/20"
+              className="w-16 h-16 rounded-full object-cover border-4 border-indigo-500/30 shadow-lg shadow-indigo-500/20"
             />
           ) : (
-            <div className="w-20 h-20 bg-indigo-500/20 rounded-full flex items-center justify-center text-indigo-400 border-4 border-indigo-500/30">
-              <BookOpen size={32} />
+            <div className="w-16 h-16 bg-indigo-500/20 rounded-full flex items-center justify-center text-indigo-400 border-4 border-indigo-500/30">
+              <BookOpen size={28} />
             </div>
           )}
+          <span className="font-black text-xs tracking-widest uppercase text-white mt-3">Admin Portal</span>
         </div>
 
         <nav className="flex-1 px-4 space-y-2 mt-4">
@@ -132,9 +128,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="p-4 mt-auto">
-          <div className="bg-slate-800/50 rounded-2xl p-4 mb-4">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-indigo-500/20 rounded-full flex items-center justify-center text-indigo-400 font-bold">
+          <div className="bg-slate-800/50 rounded-2xl p-4 mb-2">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-9 h-9 bg-indigo-500/20 rounded-full flex items-center justify-center text-indigo-400 font-bold text-xs">
                 {user?.email?.[0].toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
@@ -176,9 +172,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', bounce: 0, duration: 0.3 }}
-              className="fixed inset-y-0 left-0 w-72 bg-slate-900 text-slate-300 z-50 flex flex-col p-6 shadow-2xl lg:hidden"
+              className="fixed inset-y-0 left-0 w-72 bg-slate-900 text-slate-300 z-50 flex flex-col p-6 shadow-2xl lg:hidden overflow-y-auto"
             >
-              <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center justify-between mb-6">
                 <span className="font-black text-sm tracking-widest uppercase text-white">Navigation</span>
                 <button
                   onClick={() => setIsMobileMenuOpen(false)}
@@ -213,10 +209,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                 })}
               </nav>
 
-              <div className="mt-auto">
+              <div className="mt-auto pt-4">
                 <div className="bg-slate-800/50 rounded-2xl p-4">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 bg-indigo-500/20 rounded-full flex items-center justify-center text-indigo-400 font-bold">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-9 h-9 bg-indigo-500/20 rounded-full flex items-center justify-center text-indigo-400 font-bold text-xs">
                       {user?.email?.[0].toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">

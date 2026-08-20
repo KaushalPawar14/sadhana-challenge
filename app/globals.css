@@ -486,4 +486,143 @@ aside nav a.bg-indigo-600 {
   color: #fdfaf6 !important;
 }
 
+/* ==========================================================================
+   ADMIN PAGES COMPREHENSIVE DARK MODE & CREAM MODE STYLING
+   ========================================================================== */
+
+/* 1. Dark Mode Admin Overrides */
+.theme-dark .bg-white {
+  background-color: #111827 !important;
+  border-color: #1f2937 !important;
+  color: #f8fafc !important;
+}
+
+.theme-dark .bg-slate-50,
+.theme-dark .bg-slate-50\/80,
+.theme-dark .bg-slate-50\/50,
+.theme-dark .bg-slate-50\/30 {
+  background-color: #1a2234 !important;
+  border-color: #26334d !important;
+}
+
+.theme-dark thead.bg-slate-50 {
+  background-color: #0f172a !important;
+  border-color: #1e293b !important;
+}
+
+.theme-dark th {
+  color: #94a3b8 !important;
+}
+
+.theme-dark td {
+  border-color: #1e293b !important;
+  color: #f1f5f9 !important;
+}
+
+.theme-dark tbody.divide-slate-50 > tr {
+  border-color: #1e293b !important;
+}
+
+.theme-dark tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+.theme-dark .text-slate-900,
+.theme-dark .text-slate-800,
+.theme-dark .text-slate-700 {
+  color: #f8fafc !important;
+}
+
+.theme-dark .text-slate-600,
+.theme-dark .text-slate-500 {
+  color: #cbd5e1 !important;
+}
+
+.theme-dark .text-slate-400 {
+  color: #94a3b8 !important;
+}
+
+.theme-dark input,
+.theme-dark select,
+.theme-dark textarea {
+  background-color: #1a2234 !important;
+  color: #f8fafc !important;
+  border-color: #26334d !important;
+}
+
+.theme-dark input::placeholder,
+.theme-dark textarea::placeholder {
+  color: #64748b !important;
+}
+
+.theme-dark .border-slate-100,
+.theme-dark .border-slate-200,
+.theme-dark .border-slate-200\/50,
+.theme-dark .border-slate-200\/60,
+.theme-dark .border-slate-200\/80,
+.theme-dark .border-slate-300 {
+  border-color: #1f2937 !important;
+}
+
+/* Modal overlays and dialog containers in Dark Mode */
+.theme-dark .fixed .bg-white {
+  background-color: #111827 !important;
+  border-color: #1f2937 !important;
+  color: #f8fafc !important;
+}
+
+/* Admin Card Badges in Dark Mode */
+.theme-dark .bg-amber-50\/70 {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+  color: #fde047 !important;
+  border-color: rgba(245, 158, 11, 0.3) !important;
+}
+
+.theme-dark .bg-indigo-50\/70 {
+  background-color: rgba(99, 102, 241, 0.15) !important;
+  color: #a5b4fc !important;
+  border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+/* 2. Cream Mode Admin Overrides */
+.theme-cream .bg-white {
+  background-color: #f5ebd9 !important;
+  border-color: #ebdccb !important;
+  color: #5c4033 !important;
+}
+
+.theme-cream .bg-slate-50,
+.theme-cream .bg-slate-50\/80,
+.theme-cream .bg-slate-50\/50,
+.theme-cream .bg-slate-50\/30 {
+  background-color: #fdfaf6 !important;
+  border-color: #e2d1b9 !important;
+}
+
+.theme-cream thead.bg-slate-50 {
+  background-color: #ebdccb !important;
+}
+
+.theme-cream th {
+  color: #8c6f5e !important;
+}
+
+.theme-cream td {
+  border-color: #e2d1b9 !important;
+  color: #5c4033 !important;
+}
+
+.theme-cream tbody tr:hover {
+  background-color: rgba(92, 64, 51, 0.05) !important;
+}
+
+.theme-cream input,
+.theme-cream select,
+.theme-cream textarea {
+  background-color: #fdfaf6 !important;
+  color: #5c4033 !important;
+  border-color: #e2d1b9 !important;
+}
+
+
 

@@ -9,6 +9,7 @@ CREATE TABLE users (
   id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   full_name TEXT,
   mobile TEXT,
+  gender TEXT CHECK (gender IN ('M', 'F')),
   department TEXT,
   avatar_url TEXT,
   target_chanting INT DEFAULT 16,
@@ -22,6 +23,9 @@ CREATE TABLE users (
   is_onboarded BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT now()
 );
+
+-- Ensure gender column exists on existing deployments
+ALTER TABLE users ADD COLUMN IF NOT EXISTS gender TEXT CHECK (gender IN ('M', 'F'));
 
 -- Daily activity logs
 CREATE TABLE activity_logs (
@@ -94,9 +98,9 @@ ALTER TABLE bonus_points ENABLE ROW LEVEL SECURITY;
 ALTER TABLE awards ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
 
--- users: Users can read all rows (for leaderboard). Users can only UPDATE their own row.
+-- users: Users can read all rows (for leaderboard). Users can update own profile, or admins can update any profile.
 CREATE POLICY "Users can read all profiles" ON users FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "Users can update own profile" ON users FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users and admins can update profiles" ON users FOR UPDATE USING (auth.uid() = id OR is_admin(auth.jwt() ->> 'email'));
 
 -- activity_logs: Users can INSERT/SELECT their own rows. Admins can SELECT all.
 CREATE POLICY "Users can insert own logs" ON activity_logs FOR INSERT WITH CHECK (auth.uid() = user_id);

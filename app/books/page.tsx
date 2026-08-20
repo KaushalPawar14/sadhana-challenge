@@ -884,7 +884,7 @@ export default function BooksPage() {
             ) : null}
 
             {/* Reading Content Pane */}
-            <div ref={readerScrollRef} className="flex-1 overflow-y-auto px-6 md:px-16 py-12 flex justify-center">
+            <div ref={readerScrollRef} className="flex-1 overflow-y-auto px-4 sm:px-8 md:px-16 pt-6 pb-32 sm:pb-24 flex justify-center">
               <div className="w-full max-w-7xl space-y-8">
                 {readerLoading ? (
                   /* Loading Spinner */
@@ -933,25 +933,25 @@ export default function BooksPage() {
                       />
                     </article>
 
-                    {/* Pagination Controls */}
+                    {/* Pagination Controls (Enhanced for Mobile Viewport Visibility) */}
                     {chapters.length > 1 && (
-                      <div className="mt-12 pt-8 border-t border-black/10 dark:border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 select-none">
+                      <div className="mt-12 pt-8 pb-8 border-t border-black/10 dark:border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 select-none relative z-20">
                         <button
                           onClick={() => setCurrentChapterIndex(prev => Math.max(0, prev - 1))}
                           disabled={currentChapterIndex === 0}
-                          className="w-full sm:w-auto px-5 py-2.5 bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 rounded-xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                          className="w-full sm:w-auto px-6 py-3.5 bg-black/10 hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20 rounded-2xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm active:scale-95"
                         >
                           ← Previous Chapter
                         </button>
                         
-                        <span className="text-xs font-black opacity-60 uppercase tracking-widest">
+                        <span className="text-xs font-black opacity-70 uppercase tracking-widest my-1 sm:my-0">
                           Chapter {currentChapterIndex + 1} of {chapters.length}
                         </span>
                         
                         <button
                           onClick={() => setCurrentChapterIndex(prev => Math.min(chapters.length - 1, prev + 1))}
                           disabled={currentChapterIndex >= chapters.length - 1}
-                          className="w-full sm:w-auto px-5 py-2.5 bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 rounded-xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                          className="w-full sm:w-auto px-6 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md shadow-indigo-600/30 active:scale-95"
                         >
                           Next Chapter →
                         </button>
