@@ -231,7 +231,7 @@ export default function CompetitionForm({ competitionId }: { competitionId?: str
             <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">{existing ? 'Competition' : 'New competition'}</h2>
             {existing && <StatusBadge status={existing.status} />}
           </div>
-          {existing && <CompetitionActions c={existing} isHod={isHod} onDone={() => { reload(); if (existing.stored_status === 'draft') router.replace('/admin/competitions'); }} />}
+          {existing && <CompetitionActions c={existing} isHod={isHod} onDone={() => reload()} onDeleted={() => router.replace('/admin/competitions')} />}
         </div>
       </div>
 

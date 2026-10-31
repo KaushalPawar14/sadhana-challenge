@@ -1,7 +1,7 @@
 {
-  "at": "2026-10-31T03:44:05.640Z",
+  "at": "2026-10-31T03:48:55.255Z",
   "backup": "2026-10-31T02-13-14-991Z",
-  "pass": 172,
+  "pass": 193,
   "fail": 0,
   "results": [
     {
@@ -276,7 +276,7 @@
     },
     {
       "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
-      "check": "S1 leads the leaderboard (got b90f36d5-5bab-4229-be89-615ed2c02420, expected b90f36d5-5bab-4229-be89-615ed2c02420)",
+      "check": "S1 leads the leaderboard (got 631b3713-ffd5-459e-b459-7b7ad900c39d, expected 631b3713-ffd5-459e-b459-7b7ad900c39d)",
       "pass": true
     },
     {
@@ -626,7 +626,7 @@
     },
     {
       "scenario": "8. Finalize: suggested winners, swap, freeze",
-      "check": "suggested Rising Sadhaka = S1 (highest total) (got b90f36d5-5bab-4229-be89-615ed2c02420, expected b90f36d5-5bab-4229-be89-615ed2c02420)",
+      "check": "suggested Rising Sadhaka = S1 (highest total) (got 631b3713-ffd5-459e-b459-7b7ad900c39d, expected 631b3713-ffd5-459e-b459-7b7ad900c39d)",
       "pass": true
     },
     {
@@ -656,7 +656,7 @@
     },
     {
       "scenario": "8. Finalize: suggested winners, swap, freeze",
-      "check": "frozen standings: S1 first (got b90f36d5-5bab-4229-be89-615ed2c02420, expected b90f36d5-5bab-4229-be89-615ed2c02420)",
+      "check": "frozen standings: S1 first (got 631b3713-ffd5-459e-b459-7b7ad900c39d, expected 631b3713-ffd5-459e-b459-7b7ad900c39d)",
       "pass": true
     },
     {
@@ -827,6 +827,111 @@
     {
       "scenario": "10. IST day boundary (00:10 IST counts as the new day)",
       "check": "implausible counter rejected -> INVALID_ROUNDS",
+      "pass": true
+    },
+    {
+      "scenario": "12. HOD deletes a competition (typed-title confirmation, all data removed)",
+      "check": "student has lifetime points before the delete",
+      "pass": true
+    },
+    {
+      "scenario": "12. HOD deletes a competition (typed-title confirmation, all data removed)",
+      "check": "guide: cannot delete a competition -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "12. HOD deletes a competition (typed-title confirmation, all data removed)",
+      "check": "male enabler: cannot delete a competition -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "12. HOD deletes a competition (typed-title confirmation, all data removed)",
+      "check": "female enabler: cannot delete a competition -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "12. HOD deletes a competition (typed-title confirmation, all data removed)",
+      "check": "student cannot delete a competition -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "12. HOD deletes a competition (typed-title confirmation, all data removed)",
+      "check": "wrong confirmation title is refused -> INVALID: type the exact competition title to confirm the deletion",
+      "pass": true
+    },
+    {
+      "scenario": "12. HOD deletes a competition (typed-title confirmation, all data removed)",
+      "check": "nothing deleted by the refused attempts",
+      "pass": true
+    },
+    {
+      "scenario": "12. HOD deletes a competition (typed-title confirmation, all data removed)",
+      "check": "HOD deletes an ACTIVE competition with activity (title match is case/space tolerant) (got true, expected true)",
+      "pass": true
+    },
+    {
+      "scenario": "12. HOD deletes a competition (typed-title confirmation, all data removed)",
+      "check": "competitions: rows removed (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "12. HOD deletes a competition (typed-title confirmation, all data removed)",
+      "check": "activity_logs: rows removed (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "12. HOD deletes a competition (typed-title confirmation, all data removed)",
+      "check": "points_ledger: rows removed (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "12. HOD deletes a competition (typed-title confirmation, all data removed)",
+      "check": "bonus_points: rows removed (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "12. HOD deletes a competition (typed-title confirmation, all data removed)",
+      "check": "competition_totals: rows removed (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "12. HOD deletes a competition (typed-title confirmation, all data removed)",
+      "check": "competition_awards: rows removed (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "12. HOD deletes a competition (typed-title confirmation, all data removed)",
+      "check": "competition_participants: rows removed (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "12. HOD deletes a competition (typed-title confirmation, all data removed)",
+      "check": "activity_feed: rows removed (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "12. HOD deletes a competition (typed-title confirmation, all data removed)",
+      "check": "lifetime total recomputed after the delete (got true, expected true)",
+      "pass": true
+    },
+    {
+      "scenario": "12. HOD deletes a competition (typed-title confirmation, all data removed)",
+      "check": "finalized competition has awards before the delete",
+      "pass": true
+    },
+    {
+      "scenario": "12. HOD deletes a competition (typed-title confirmation, all data removed)",
+      "check": "finalized competition: winners/awards removed (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "12. HOD deletes a competition (typed-title confirmation, all data removed)",
+      "check": "finalized competition: frozen standings removed (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "12. HOD deletes a competition (typed-title confirmation, all data removed)",
+      "check": "deleting a missing competition is a harmless no-op (got false, expected false)",
       "pass": true
     },
     {

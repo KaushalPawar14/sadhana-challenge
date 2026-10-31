@@ -127,3 +127,10 @@ Requested after the first deploy: the first activity of a competition must ask f
 - **Decision**: reading points are still per-minute with the daily cap (unchanged). The reading commitment is collected, stored, shown and capped, but does not (yet) change the reading score, unlike chanting where points = rounds ÷ commitment × 10. Say the word if reading should be normalised the same way (minutes ÷ commitment × N).
 - Tests: 172/172 (20 new checks: both-required, each limit, reading-only asks no rounds, chanting-only asks no minutes, raise-only, state reporting). `schema.sql` regenerated (includes 000500), fresh-deploy check passes, lint 0 errors, build passes.
 - **Must be applied before deploying this code**: the new UI calls `set_commitment(p_rounds, p_minutes)`, which only exists after migration 000500. Not applied to live yet, not committed or pushed.
+
+## 10. Addendum — HOD can delete a challenge (migration `20261031000600_delete_competition.sql`)
+
+- New **Delete** button on every competition (list and edit page), **HOD only** (hidden for others and refused by the database).
+- Works for **any status** (draft, scheduled, active, ended, finalized, archived). The HOD must type the exact competition title (a browser prompt shows what will be removed); the database re-checks the title, so a direct call cannot skip it.
+- Deletes the competition **and all its data**: activity logs, reading sessions, quiz results, bonus, ledger, totals, award definitions and winners, frozen standings, feed rows. Students' lifetime `users.total_points` are recomputed. **It cannot be undone** (take a backup first); **Archive** keeps the history and is still available. This supersedes the earlier "no hard delete of real competition data" rule, at the HOD's explicit request.
+- Tests: 193/193 (21 new checks: guide/enablers/students refused, wrong title refused, active and finalized competitions deleted, every dependent table emptied, totals recomputed, missing id is a no-op).

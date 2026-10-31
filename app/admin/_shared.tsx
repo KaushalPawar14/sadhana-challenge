@@ -98,10 +98,10 @@ export function competitionSummary(c: Competition) {
   return `${typeLabel(c.type)}${c.bonus_enabled ? ' + Bonus' : ''} · ${c.start_date} → ${c.end_date}`;
 }
 
-/** Per-competition HOD actions: archive / unarchive / delete draft / rebuild totals / finalize. */
+/** Per-competition HOD actions: finalize / rebuild totals / archive / unarchive / delete. */
 export function CompetitionActions({
-  c, isHod, onDone, compact = false,
-}: { c: Competition; isHod: boolean; onDone: () => void; compact?: boolean }) {
+  c, isHod, onDone, onDeleted, compact = false,
+}: { c: Competition; isHod: boolean; onDone: () => void; onDeleted?: () => void; compact?: boolean }) {
   const [busy, setBusy] = useState(false);
   if (!isHod) return null;
 
@@ -161,18 +161,26 @@ export function CompetitionActions({
           Unarchive
         </button>
       )}
-      {isDraft && (
-        <button
-          disabled={busy}
-          className={`${btn} bg-white text-red-600 border-red-200 hover:bg-red-50`}
-          onClick={() => {
-            if (!confirm('Delete this draft? (Only drafts without any activity can be deleted.)')) return;
-            run('Draft deleted', () => supabase.rpc('delete_competition_draft', { p_id: c.id }));
-          }}
-        >
-          Delete draft
-        </button>
-      )}
+      <button
+        disabled={busy}
+        className={`${btn} bg-white text-red-600 border-red-200 hover:bg-red-50`}
+        onClick={async () => {
+          const warn = isDraft
+            ? `Delete the draft "${c.title}"?\n\nType the competition title to confirm:`
+            : `PERMANENTLY DELETE "${c.title}"?\n\nThis removes the competition and ALL its data: students' logs, reading sessions, quiz results, bonus points, scores, awards and winners. It cannot be undone. (Use Archive to keep the history.)\n\nType the competition title to confirm:`;
+          const typed = window.prompt(warn);
+          if (typed === null) return;
+          setBusy(true);
+          const { data, error } = await supabase.rpc('delete_competition', { p_id: c.id, p_confirm_title: typed });
+          setBusy(false);
+          if (error) { toast.error(friendlyError(error)); return; }
+          const r = data as { logs_removed?: number; students_affected?: number } | null;
+          toast.success(`Competition deleted (${r?.logs_removed ?? 0} logs, ${r?.students_affected ?? 0} students affected)`);
+          if (onDeleted) onDeleted(); else onDone();
+        }}
+      >
+        Delete
+      </button>
     </div>
   );
 }

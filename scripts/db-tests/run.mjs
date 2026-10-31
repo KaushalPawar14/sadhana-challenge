@@ -352,6 +352,36 @@ eq((await q("select count(*)::int n from public.points_ledger where user_id=$1 a
 await rejects(as(db, S1, 'select public.sync_chanting(9999)'), /INVALID_ROUNDS/, 'implausible counter rejected');
 
 // =====================================================================
+scenario('12. HOD deletes a competition (typed-title confirmation, all data removed)');
+await setClock(db, '2027-03-01T05:00:00Z');
+const { rows: [{ id: D }] } = await saveComp(HOD, { title: 'TEST Deletable', type: 'chanting', bonus_enabled: true, start_date: '2027-03-01', end_date: '2027-03-05', status: 'published' });
+await as(db, S2, 'select public.set_commitment(10)');
+await log(S2, '2027-03-01', 10);
+await as(db, HOD, 'select public.give_bonus($1::uuid, 7, $2)', [S2.id, 'TEST bonus']);
+const lifetimeBefore = (await q('select total_points t from public.users where id=$1', [S2.id]))[0].t;
+ok(lifetimeBefore > 0, 'student has lifetime points before the delete');
+for (const [nm, who] of [['guide', GUIDE], ['male enabler', ENM], ['female enabler', ENF]]) {
+  await rejects(as(db, who, 'select public.delete_competition($1::uuid,$2)', [D, 'TEST Deletable']), /FORBIDDEN/, `${nm}: cannot delete a competition`);
+}
+await rejects(as(db, S2, 'select public.delete_competition($1::uuid,$2)', [D, 'TEST Deletable']), /FORBIDDEN/, 'student cannot delete a competition');
+await rejects(as(db, HOD, 'select public.delete_competition($1::uuid,$2)', [D, 'wrong title']), /exact competition title/, 'wrong confirmation title is refused');
+ok((await q('select count(*)::int n from public.competitions where id=$1', [D]))[0].n === 1, 'nothing deleted by the refused attempts');
+const del = (await as(db, HOD, 'select public.delete_competition($1::uuid,$2) r', [D, '  test deletable '])).rows[0].r;
+eq(del.deleted, true, 'HOD deletes an ACTIVE competition with activity (title match is case/space tolerant)');
+for (const [tbl, col] of [['competitions', 'id'], ['activity_logs', 'competition_id'], ['points_ledger', 'competition_id'], ['bonus_points', 'competition_id'],
+  ['competition_totals', 'competition_id'], ['competition_awards', 'competition_id'], ['competition_participants', 'competition_id'], ['activity_feed', 'competition_id']]) {
+  eq((await q(`select count(*)::int n from public.${tbl} where ${col}=$1`, [D]))[0].n, 0, `${tbl}: rows removed`);
+}
+eq((await q('select total_points t from public.users where id=$1', [S2.id]))[0].t < lifetimeBefore, true, 'lifetime total recomputed after the delete');
+// a FINALIZED competition (with winners) can be deleted too
+const bAwards = (await q('select count(*)::int n from public.user_awards where competition_id=$1', [B]))[0].n;
+ok(bAwards > 0, 'finalized competition has awards before the delete');
+await as(db, HOD, 'select public.delete_competition($1::uuid,$2)', [B, 'TEST Both']);
+eq((await q('select count(*)::int n from public.user_awards where competition_id=$1', [B]))[0].n, 0, 'finalized competition: winners/awards removed');
+eq((await q('select count(*)::int n from public.competition_final_standings where competition_id=$1', [B]))[0].n, 0, 'finalized competition: frozen standings removed');
+eq((await as(db, HOD, 'select public.delete_competition(gen_random_uuid(), $1) r', ['x'])).rows[0].r.deleted, false, 'deleting a missing competition is a harmless no-op');
+
+// =====================================================================
 scenario('11. Competition 1 migration (dry run on the restored LIVE backup)');
 const fresh = await createDb();
 const rep = (await fresh.db.query('select count(*)::int n, count(*) filter (where diff<>0)::int mism, sum(old_total)::int o, sum(new_total)::int nw from public.migration_report_competition1')).rows[0];
