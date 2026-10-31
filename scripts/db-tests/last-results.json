@@ -1,102 +1,132 @@
 {
-  "at": "2026-10-31T03:48:55.255Z",
+  "at": "2026-10-31T03:57:01.178Z",
   "backup": "2026-10-31T02-13-14-991Z",
-  "pass": 193,
+  "pass": 199,
   "fail": 0,
   "results": [
     {
-      "scenario": "1. Reading competition, bonus OFF",
-      "check": "chanting log is blocked -> CHANTING_NOT_ENABLED",
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
+      "check": "reading-only: a chanting value is refused -> CHANTING_NOT_ENABLED",
       "pass": true
     },
     {
-      "scenario": "1. Reading competition, bonus OFF",
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
       "check": "commitment blocked -> CHANTING_NOT_ENABLED",
       "pass": true
     },
     {
-      "scenario": "1. Reading competition, bonus OFF",
-      "check": "reading-only: reading commitment is mandatory before the first session -> READING_COMMITMENT_REQUIRED",
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
+      "check": "reading-only: reading commitment is mandatory before the first log -> READING_COMMITMENT_REQUIRED",
       "pass": true
     },
     {
-      "scenario": "1. Reading competition, bonus OFF",
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
       "check": "reading-only: no chanting commitment is asked -> CHANTING_NOT_ENABLED",
       "pass": true
     },
     {
-      "scenario": "1. Reading competition, bonus OFF",
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
       "check": "reading commitment can never exceed 60 minutes -> INVALID_READING_COMMITMENT",
       "pass": true
     },
     {
-      "scenario": "1. Reading competition, bonus OFF",
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
       "check": "reading commitment must be at least 1 minute -> INVALID_READING_COMMITMENT",
       "pass": true
     },
     {
-      "scenario": "1. Reading competition, bonus OFF",
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
       "check": "cannot skip the commitment -> READING_COMMITMENT_REQUIRED",
       "pass": true
     },
     {
-      "scenario": "1. Reading competition, bonus OFF",
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
       "check": "reading commitment can only be raised -> READING_COMMITMENT_CANNOT_DECREASE",
       "pass": true
     },
     {
-      "scenario": "1. Reading competition, bonus OFF",
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
       "check": "reading commitment can be raised up to 60",
       "pass": true
     },
     {
-      "scenario": "1. Reading competition, bonus OFF",
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
       "check": "reading commitment stored (got 60, expected 60)",
       "pass": true
     },
     {
-      "scenario": "1. Reading competition, bonus OFF",
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
       "check": "reading-only: no chanting commitment stored",
       "pass": true
     },
     {
-      "scenario": "1. Reading competition, bonus OFF",
-      "check": "reading earns 1 point/min -> 12 min = 12 points (got 12.00, expected 12)",
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
+      "check": "minutes are required in a reading log -> INVALID_MINUTES",
       "pass": true
     },
     {
-      "scenario": "1. Reading competition, bonus OFF",
-      "check": "total = reading points (got 12.00, expected 12)",
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
+      "check": "implausible minutes refused -> INVALID_MINUTES",
       "pass": true
     },
     {
-      "scenario": "1. Reading competition, bonus OFF",
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
+      "check": "reading scored by commitment: 30 of 60 min x 10 = 5 points (day 1, x1) (got 5.00, expected 5)",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
+      "check": "total = reading points (got 5.00, expected 5)",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
+      "check": "day 2: 60 of 60 min = 10 x streak 2 = 20 -> 25 total (got 25.00, expected 25)",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
+      "check": "reading logs build the streak like chanting (got 2, expected 2)",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
+      "check": "one reading log per day -> ALREADY_LOGGED",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
+      "check": "in-app reading tracking no longer exists (leaderboard comes from the log only) -> function public.start_reading_session(uuid) does not exist",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
+      "check": "ledger row records minutes + commitment",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
       "check": "quiz/listening is blocked -> BONUS_NOT_ENABLED",
       "pass": true
     },
     {
-      "scenario": "1. Reading competition, bonus OFF",
-      "check": "books are visible to students (got 1, expected 1)",
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
+      "check": "books stay readable (library only, no tracking) (got 1, expected 1)",
       "pass": true
     },
     {
-      "scenario": "1. Reading competition, bonus OFF",
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
       "check": "audiobooks/quiz hidden from students (RLS) (got 0, expected 0)",
       "pass": true
     },
     {
-      "scenario": "1. Reading competition, bonus OFF",
-      "check": "20 instant heartbeats + end credit 0 seconds (server clock) (got 0, expected 0)",
-      "pass": true
-    },
-    {
-      "scenario": "1. Reading competition, bonus OFF",
-      "check": "feed event carries the points delta",
+      "scenario": "1. Reading competition = a daily LOG scored by commitment (bonus OFF)",
+      "check": "feed events carry the points delta",
       "pass": true
     },
     {
       "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
-      "check": "reading is blocked -> READING_NOT_ENABLED",
+      "check": "chanting-only: a reading value is refused -> READING_NOT_ENABLED",
       "pass": true
     },
     {
@@ -226,11 +256,6 @@
     },
     {
       "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
-      "check": "both: reading is blocked until the commitments are given -> READING_COMMITMENT_REQUIRED",
-      "pass": true
-    },
-    {
-      "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
       "check": "both: rounds and minutes stored together (16 / 30)",
       "pass": true
     },
@@ -246,7 +271,7 @@
     },
     {
       "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
-      "check": "reading 8 min capped to 5 min -> 5 (got 5.00, expected 5)",
+      "check": "reading 15 of 30 min x 10 -> 5 (got 5.00, expected 5)",
       "pass": true
     },
     {
@@ -276,7 +301,7 @@
     },
     {
       "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
-      "check": "S1 leads the leaderboard (got 631b3713-ffd5-459e-b459-7b7ad900c39d, expected 631b3713-ffd5-459e-b459-7b7ad900c39d)",
+      "check": "S1 leads the leaderboard (got cc3c6bd8-a119-41fe-a072-5fe934ab0001, expected cc3c6bd8-a119-41fe-a072-5fe934ab0001)",
       "pass": true
     },
     {
@@ -337,11 +362,6 @@
     {
       "scenario": "5. Logging before start / after end is rejected",
       "check": "after end + grace: rejected -> NO_ACTIVE_COMPETITION",
-      "pass": true
-    },
-    {
-      "scenario": "5. Logging before start / after end is rejected",
-      "check": "reading after end rejected -> NO_ACTIVE_COMPETITION",
       "pass": true
     },
     {
@@ -626,7 +646,7 @@
     },
     {
       "scenario": "8. Finalize: suggested winners, swap, freeze",
-      "check": "suggested Rising Sadhaka = S1 (highest total) (got 631b3713-ffd5-459e-b459-7b7ad900c39d, expected 631b3713-ffd5-459e-b459-7b7ad900c39d)",
+      "check": "suggested Rising Sadhaka = S1 (highest total) (got cc3c6bd8-a119-41fe-a072-5fe934ab0001, expected cc3c6bd8-a119-41fe-a072-5fe934ab0001)",
       "pass": true
     },
     {
@@ -656,7 +676,7 @@
     },
     {
       "scenario": "8. Finalize: suggested winners, swap, freeze",
-      "check": "frozen standings: S1 first (got 631b3713-ffd5-459e-b459-7b7ad900c39d, expected 631b3713-ffd5-459e-b459-7b7ad900c39d)",
+      "check": "frozen standings: S1 first (got cc3c6bd8-a119-41fe-a072-5fe934ab0001, expected cc3c6bd8-a119-41fe-a072-5fe934ab0001)",
       "pass": true
     },
     {
@@ -811,17 +831,27 @@
     },
     {
       "scenario": "10. IST day boundary (00:10 IST counts as the new day)",
-      "check": "completed day auto-fulfilled exactly once (got [\"2027-02-04\"], expected [\"2027-02-04\"])",
+      "check": "the Japa counter NEVER creates a log/points (leaderboard = submitted log only) (got 0, expected 0)",
       "pass": true
     },
     {
       "scenario": "10. IST day boundary (00:10 IST counts as the new day)",
-      "check": "second sync does not double count (got 0, expected 0)",
+      "check": "counter value is stored so the log form can pre-fill it (got 5, expected 5)",
       "pass": true
     },
     {
       "scenario": "10. IST day boundary (00:10 IST counts as the new day)",
-      "check": "one ledger row per day (got 2, expected 2)",
+      "check": "no activity log was created from the counter (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "10. IST day boundary (00:10 IST counts as the new day)",
+      "check": "second sync still creates nothing (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "10. IST day boundary (00:10 IST counts as the new day)",
+      "check": "only the submitted log is in the ledger (got 1, expected 1)",
       "pass": true
     },
     {

@@ -5,9 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuthStore } from '@/store/authStore';
 import { useActiveCompetition } from '@/hooks/useActiveCompetition';
-import { CommitmentForm } from '@/components/student/CommitmentForm';
-import { supabase as browserSupabase } from '@/lib/supabaseClient';
-import { istDateOf, istToday } from '@/lib/ist';
 import { includesReading } from '@/lib/competition';
 import {
   BookOpen, Globe, FileText, ExternalLink, Sparkles, Calendar,
@@ -32,22 +29,9 @@ type ReaderTheme = 'dark' | 'coffee' | 'white';
 export default function BooksPage() {
   const { user, isAdmin } = useAuthStore();
   const { loading: compLoading, competition, features } = useActiveCompetition();
-  // reading time is only measured (and scored) while the running competition includes reading
+  // The Books section is a LIBRARY only. Reading is never measured here: students log their reading minutes in the
+  // daily log, and only that log feeds the leaderboard.
   const readingCounts = !!competition && includesReading(competition.type);
-
-  // Mandatory commitment (reading minutes, and for 'both' also chanting rounds) before the first reading activity
-  const [commitGate, setCommitGate] = useState<'checking' | 'needed' | 'ok'>('checking');
-  const [commitState, setCommitState] = useState<{ rounds: number | null; minutes: number | null; dflt: number | null }>({ rounds: null, minutes: null, dflt: null });
-  useEffect(() => {
-    if (compLoading) return;
-    if (!readingCounts || isAdmin) { setCommitGate('ok'); return; }
-    browserSupabase.rpc('get_my_state').then(({ data }) => {
-      const st = data as any;
-      const missing = (st?.required?.reading && !st?.reading_commitment) || (st?.required?.chanting && !st?.commitment);
-      setCommitState({ rounds: st?.commitment ?? null, minutes: st?.reading_commitment ?? null, dflt: st?.default_commitment ?? null });
-      setCommitGate(missing ? 'needed' : 'ok');
-    });
-  }, [compLoading, readingCounts, isAdmin]);
 
   // Books List State
   const [books, setBooks] = useState<Book[]>([]);
@@ -55,8 +39,6 @@ export default function BooksPage() {
   const [selectedLanguage, setSelectedLanguage] = useState<'English' | 'Hindi' | 'Gujarati'>('English');
 
   // Reading stats state
-  const [todayReadingMinutes, setTodayReadingMinutes] = useState<number>(0);
-  const [totalReadingMinutes, setTotalReadingMinutes] = useState<number>(0);
 
   // E-Reader Screen State
   const [activeBook, setActiveBook] = useState<Book | null>(null);
@@ -82,42 +64,8 @@ export default function BooksPage() {
   // Ref for scroll container
   const readerScrollRef = useRef<HTMLDivElement>(null);
 
-  // Reading session time tracking refs
-  const sessionStartTime = useRef<number | null>(null);
-  const lastInteractionTime = useRef<number>(Date.now());
-  const idleTimeoutId = useRef<any>(null);
-  const isTracking = useRef<boolean>(false);
-  const timerDisplayRef = useRef<HTMLSpanElement>(null);
-  const timerIntervalId = useRef<any>(null);
-
-  // Load reading statistics from the database
-  const fetchReadingStats = async () => {
-    if (!user) return;
-    try {
-      // own sessions of the running competition (counted_seconds is measured by the server)
-      let q = supabase.from('reading_sessions').select('counted_seconds, started_at').eq('user_id', user.id).eq('status', 'closed');
-      if (competition) q = q.eq('competition_id', competition.id);
-      const { data, error } = await q;
-      if (error) throw error;
-      const todayStr = istToday();
-      let totalSecs = 0;
-      let todaySecs = 0;
-      (data || []).forEach((session: any) => {
-        totalSecs += session.counted_seconds || 0;
-        if (session.started_at && istDateOf(session.started_at) === todayStr) todaySecs += session.counted_seconds || 0;
-      });
-      setTodayReadingMinutes(Math.round(todaySecs / 60));
-      setTotalReadingMinutes(Math.round(totalSecs / 60));
-    } catch (err) {
-      console.error('Error fetching reading stats:', err);
-    }
-  };
-
   useEffect(() => {
     fetchBooks();
-    if (user) {
-      fetchReadingStats();
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, competition?.id]);
 
@@ -306,139 +254,6 @@ export default function BooksPage() {
     setIsBookmarkMode(prev => !prev);
   };
 
-  // Format seconds to MM:SS style
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  // Start updating the UI clock display without triggering React renders
-  const startClockInterval = () => {
-    if (timerIntervalId.current) clearInterval(timerIntervalId.current);
-    timerIntervalId.current = setInterval(() => {
-      if (timerDisplayRef.current && sessionStartTime.current) {
-        const elapsedSecs = Math.floor((Date.now() - sessionStartTime.current) / 1000);
-        timerDisplayRef.current.innerText = formatTime(elapsedSecs);
-      }
-    }, 1000);
-  };
-
-  const stopClockInterval = () => {
-    if (timerIntervalId.current) {
-      clearInterval(timerIntervalId.current);
-      timerIntervalId.current = null;
-    }
-    if (timerDisplayRef.current) {
-      timerDisplayRef.current.innerText = '00:00';
-    }
-  };
-
-  // ---- Reading time is measured by the SERVER (api/save-reading-session). The browser only says
-  // "a session started", "I am still active" (heartbeat) and "the session ended"; it never sends seconds.
-  const sessionIdRef = useRef<string | null>(null);
-  const startingRef = useRef(false);
-  const heartbeatIntervalId = useRef<any>(null);
-
-  const postSession = async (body: Record<string, unknown>) => {
-    const res = await fetch('/api/save-reading-session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      keepalive: true,
-    });
-    return res.json().catch(() => ({}));
-  };
-
-  // End the current server session. `useBeacon` is used while the page is going away.
-  const endServerSession = (useBeacon = false) => {
-    const sid = sessionIdRef.current;
-    if (!sid) return;
-    sessionIdRef.current = null;
-    const active = Date.now() - lastInteractionTime.current < 60000;
-    const payload = JSON.stringify({ action: 'end', sessionId: sid, active });
-    if (useBeacon && typeof navigator !== 'undefined' && navigator.sendBeacon) {
-      navigator.sendBeacon('/api/save-reading-session', new Blob([payload], { type: 'application/json' }));
-    } else {
-      fetch('/api/save-reading-session', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true,
-      }).catch(() => {});
-    }
-    if (heartbeatIntervalId.current) { clearInterval(heartbeatIntervalId.current); heartbeatIntervalId.current = null; }
-    isTracking.current = false;
-    sessionStartTime.current = null;
-    stopClockInterval();
-  };
-
-  const startServerSession = async (bookId: string) => {
-    if (sessionIdRef.current || startingRef.current || !readingCounts) return;
-    startingRef.current = true;
-    try {
-      const data = await postSession({ action: 'start', bookId });
-      if (!data?.sessionId) return; // e.g. no active reading competition: nothing to track
-      sessionIdRef.current = data.sessionId;
-      isTracking.current = true;
-      sessionStartTime.current = Date.now();
-      lastInteractionTime.current = Date.now();
-      startClockInterval();
-      if (heartbeatIntervalId.current) clearInterval(heartbeatIntervalId.current);
-      heartbeatIntervalId.current = setInterval(() => {
-        const sid = sessionIdRef.current;
-        if (!sid) return;
-        // only count time while the reader has been active in the last 60 s
-        if (Date.now() - lastInteractionTime.current < 60000) {
-          postSession({ action: 'heartbeat', sessionId: sid })
-            .then((r) => { if (r && r.open === false) endServerSession(false); })
-            .catch(() => {});
-        }
-      }, 30000);
-    } finally {
-      startingRef.current = false;
-    }
-  };
-
-  // Session lifecycle: start when the reader content is ready, end on idle / hidden tab / close.
-  useEffect(() => {
-    if (!(activeBook && !readerLoading && chapters.length > 0 && readingCounts)) return;
-    const bookId = activeBook.id;
-    startServerSession(bookId);
-
-    const armIdle = () => {
-      if (idleTimeoutId.current) clearTimeout(idleTimeoutId.current);
-      idleTimeoutId.current = setTimeout(() => endServerSession(false), 180000); // 3 min idle -> end
-    };
-    armIdle();
-
-    const handleActivity = () => {
-      lastInteractionTime.current = Date.now();
-      if (!sessionIdRef.current) startServerSession(bookId); // resume after idle
-      armIdle();
-    };
-    window.addEventListener('mousemove', handleActivity);
-    window.addEventListener('touchstart', handleActivity);
-    window.addEventListener('keydown', handleActivity);
-    window.addEventListener('scroll', handleActivity, { passive: true });
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') endServerSession(true);
-    };
-    const handlePageHide = () => endServerSession(true);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('pagehide', handlePageHide);
-
-    return () => {
-      endServerSession(true);
-      window.removeEventListener('mousemove', handleActivity);
-      window.removeEventListener('touchstart', handleActivity);
-      window.removeEventListener('keydown', handleActivity);
-      window.removeEventListener('scroll', handleActivity);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('pagehide', handlePageHide);
-      if (idleTimeoutId.current) clearTimeout(idleTimeoutId.current);
-      stopClockInterval();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeBook, readerLoading, chapters.length, readingCounts]);
 
   const fetchBooks = async () => {
     setIsLoading(true);
@@ -547,8 +362,6 @@ export default function BooksPage() {
     setActiveBook(null);
     setReaderHtml('');
     setReaderError('');
-    // the server closes the session a moment after the reader unmounts
-    setTimeout(fetchReadingStats, 1500);
   };
 
   // Exit reader with prompt checking
@@ -600,22 +413,6 @@ export default function BooksPage() {
     );
   }
 
-  if (readingCounts && !isAdmin && commitGate !== 'ok') {
-    if (commitGate === 'checking') return <div className="py-24 text-center font-bold text-slate-400">Checking your commitment...</div>;
-    return (
-      <div className="px-4 md:px-0 py-6 max-w-lg mx-auto">
-        <div className="rounded-[2rem] overflow-hidden border border-slate-100 shadow-xl">
-          <CommitmentForm
-            competition={competition!}
-            current={{ rounds: commitState.rounds, minutes: commitState.minutes }}
-            defaultRounds={commitState.dflt}
-            onSaved={() => setCommitGate('ok')}
-          />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="pb-32 px-4 md:px-0">
       <AnimatePresence mode="wait">
@@ -642,14 +439,14 @@ export default function BooksPage() {
                   Nourish Your Devotion
                 </h2>
                 <p className="text-sm md:text-base font-bold text-slate-300 leading-relaxed">
-                  Access sacred scriptures and reading materials to track your daily progress. Select a language to filter the list and tap a book to launch the premium reader.
+                  Access sacred scriptures and reading materials. Select a language to filter the list and tap a book to launch the premium reader.
                 </p>
               </div>
             </div>
 
-            {!compLoading && !readingCounts && (
-              <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-4 text-sm font-bold">
-                Reading time is not scored in the current competition ({competition?.title}). You can still read for yourself.
+            {!compLoading && readingCounts && !isAdmin && (
+              <div className="bg-teal-50 border border-teal-200 text-teal-900 rounded-2xl p-4 text-sm font-bold">
+                📖 This library is for your reading. The app does not measure it: enter the minutes you read in your daily log (Leaderboard → Log Activity).
               </div>
             )}
 
@@ -690,24 +487,6 @@ export default function BooksPage() {
                   })}
                 </div>
 
-                {/* Reading Stats Widget */}
-                <div className="flex items-center gap-4 bg-indigo-50/50 border border-indigo-100/50 px-4 py-1.5 rounded-2xl shadow-sm self-start sm:self-center">
-                  <div className="flex items-center gap-2">
-                    <span className="text-indigo-650 text-xs">📅</span>
-                    <div>
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Today&apos;s Read</p>
-                      <p className="text-xs font-black text-slate-800 leading-none">{todayReadingMinutes} mins</p>
-                    </div>
-                  </div>
-                  <div className="w-px h-6 bg-indigo-100/50" />
-                  <div className="flex items-center gap-2">
-                    <span className="text-indigo-650 text-xs">🏆</span>
-                    <div>
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Total Read</p>
-                      <p className="text-xs font-black text-slate-800 leading-none">{totalReadingMinutes} mins</p>
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -806,14 +585,6 @@ export default function BooksPage() {
                 <div className="hidden sm:block">
                   <h3 className="font-black text-sm tracking-tight truncate max-w-xs">{activeBook.title}</h3>
                   <p className="text-[10px] font-bold opacity-60 uppercase tracking-widest leading-none mt-0.5">{activeBook.language} scripture</p>
-                </div>
-                {/* Active Reading Timer */}
-                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-500 rounded-xl font-bold text-xs select-none shadow-sm">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-80">
-                    <circle cx="12" cy="12" r="10" />
-                    <polyline points="12 6 12 12 16 14" />
-                  </svg>
-                  <span ref={timerDisplayRef} className="font-mono tracking-wider">00:00</span>
                 </div>
               </div>
 

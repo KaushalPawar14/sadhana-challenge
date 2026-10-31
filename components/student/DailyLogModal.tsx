@@ -9,7 +9,7 @@ import { useAuthStore } from '@/store/authStore';
 import { toast } from 'react-hot-toast';
 import { friendlyError } from '@/lib/errors';
 import { formatLong, formatShort, istToday } from '@/lib/ist';
-import { includesChanting, mergeConfig, type Competition, type ActiveCompetitionPayload } from '@/lib/competition';
+import { includesChanting, includesReading, mergeConfig, type Competition, type ActiveCompetitionPayload } from '@/lib/competition';
 import { CommitmentForm } from '@/components/student/CommitmentForm';
 
 interface DailyLogModalProps {
@@ -36,13 +36,15 @@ interface LogResult {
   streak: number;
   total: number;
   date: string;
+  chanting_points?: number | null;
+  reading_points?: number | null;
 }
 
 type Step = 'loading' | 'blocked' | 'commitment' | 'form' | 'summary';
 
 /**
- * Daily chanting log. Everything that scores happens in the database (rpc log_chanting): this
- * component only collects the rounds and shows what the server calculated.
+ * THE daily log: chanting rounds and/or reading minutes, depending on the competition type. The leaderboard is fed only by
+ * this log (rpc log_activity): the component just collects the numbers and shows what the server calculated.
  */
 export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps) => {
   const { user } = useAuthStore();
@@ -59,9 +61,12 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
   const [isLoading, setIsLoading] = useState(false);
   const [logDate, setLogDate] = useState('');
   const [rounds, setRounds] = useState<number>(0);
+  const [minutes, setMinutes] = useState<number>(0);
   const [result, setResult] = useState<LogResult | null>(null);
 
   const cfg = mergeConfig(competition?.config);
+  const needR = !!competition && includesChanting(competition.type);
+  const needM = !!competition && includesReading(competition.type);
 
   const loadCounterRounds = async (compId: string, date: string, fallback: number) => {
     // rounds counted by the Japa counter for that day (own rows, read-only)
@@ -105,18 +110,6 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
         setStep('blocked');
         return;
       }
-      if (!includesChanting(comp.type)) {
-        setBlockedMsg(
-          <>
-            <p className="text-lg font-black text-slate-800 mb-1">Chanting is not part of this competition</p>
-            <p className="text-sm text-slate-500 mb-4">Your reading time is tracked automatically in the Books section.</p>
-            <Link href="/books" onClick={onClose} className="inline-block px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-wider">Open Books</Link>
-          </>
-        );
-        setStep('blocked');
-        return;
-      }
-
       const st = mine as MyState;
       setState(st);
       const first = st.loggable_dates?.[0];
@@ -140,6 +133,7 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
       setLogDate(first);
       const counter = first === istToday() ? st.counter_today : await loadCounterRounds(comp.id, first, 0);
       setRounds(counter > 0 ? counter : st.commitment ?? 0);
+      setMinutes(st.reading_commitment ?? 0);
       // every commitment this competition type needs must exist before the first log (chanting rounds, and for
       // 'both' also the reading minutes); the database enforces the same rule
       const missing = (st.required?.chanting && !st.commitment) || (st.required?.reading && !st.reading_commitment);
@@ -158,6 +152,7 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
   const handleCommitmentSaved = (saved: { rounds: number | null; minutes: number | null }) => {
     setState((st) => (st ? { ...st, commitment: saved.rounds ?? st.commitment, reading_commitment: saved.minutes ?? st.reading_commitment } : st));
     if (rounds === 0 && saved.rounds) setRounds(saved.rounds);
+    if (minutes === 0 && saved.minutes) setMinutes(saved.minutes);
     setStep('form');
   };
 
@@ -171,11 +166,13 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!competition || !logDate) return;
-    if (rounds === 0 && !confirm('Log 0 rounds for this day? Confirm submission?')) return;
+    if (needR && needM && rounds === 0 && minutes === 0 && !confirm('Log 0 rounds and 0 reading minutes for this day? Confirm submission?')) return;
+    if (needR && !needM && rounds === 0 && !confirm('Log 0 rounds for this day? Confirm submission?')) return;
+    if (needM && !needR && minutes === 0 && !confirm('Log 0 reading minutes for this day? Confirm submission?')) return;
 
     setIsLoading(true);
     try {
-      const { data, error } = await supabase.rpc('log_chanting', { p_date: logDate, p_rounds: rounds });
+      const { data, error } = await supabase.rpc('log_activity', { p_date: logDate, p_rounds: needR ? rounds : null, p_minutes: needM ? minutes : null });
       if (error) throw error;
       const r = data as LogResult;
       setResult(r);
@@ -264,26 +261,44 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
                 </div>
               </div>
 
-              <div>
-                <div className="flex justify-between items-end mb-2">
-                  <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                    <span>📿</span> Chanting Rounds
-                  </label>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
-                    Commitment: {state?.commitment} Rounds
-                  </span>
+              {needR && (
+                <div>
+                  <div className="flex justify-between items-end mb-2">
+                    <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                      <span>📿</span> Chanting Rounds
+                    </label>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
+                      Commitment: {state?.commitment} Rounds
+                    </span>
+                  </div>
+                  <input
+                    type="number" name="chanting_rounds" min="0" max="300" value={rounds}
+                    onChange={(e) => setRounds(Math.min(300, Math.max(0, parseInt(e.target.value) || 0)))}
+                    className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-indigo-500 outline-none font-bold text-lg text-slate-800"
+                    placeholder="Enter rounds completed"
+                  />
                 </div>
-                <input
-                  type="number"
-                  name="chanting_rounds"
-                  min="0"
-                  max="300"
-                  value={rounds}
-                  onChange={(e) => setRounds(Math.min(300, Math.max(0, parseInt(e.target.value) || 0)))}
-                  className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-indigo-500 outline-none font-bold text-lg text-slate-800"
-                  placeholder="Enter rounds completed"
-                />
-              </div>
+              )}
+
+              {needM && (
+                <div>
+                  <div className="flex justify-between items-end mb-2">
+                    <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                      <span>📖</span> Book Reading Minutes
+                    </label>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-teal-700 bg-teal-50 border border-teal-100 px-2 py-0.5 rounded-full">
+                      Commitment: {state?.reading_commitment} Minutes
+                    </span>
+                  </div>
+                  <input
+                    type="number" name="reading_minutes" min="0" max="600" value={minutes}
+                    onChange={(e) => setMinutes(Math.min(600, Math.max(0, parseInt(e.target.value) || 0)))}
+                    className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-teal-500 outline-none font-bold text-lg text-slate-800"
+                    placeholder="Minutes you read today"
+                  />
+                  <p className="mt-1.5 text-[11px] font-medium text-slate-500">Enter the minutes of book reading you actually did. Your reading is not measured by the app.</p>
+                </div>
+              )}
 
               <button
                 type="submit"
@@ -325,6 +340,9 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
                 <p className="text-[10px] font-bold opacity-60 uppercase tracking-wider mb-1">Total Earned</p>
                 <p className="text-3xl font-black">{result?.points ?? 0} pts</p>
                 <p className="text-[10px] font-bold opacity-70 mt-1">🔥 {result?.streak ?? 0}-day streak</p>
+                {result?.chanting_points != null && result?.reading_points != null && (
+                  <p className="text-[10px] font-bold opacity-70 mt-1">📿 {result.chanting_points} · 📖 {result.reading_points}</p>
+                )}
               </div>
             </div>
 

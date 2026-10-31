@@ -63,24 +63,13 @@ export default function ChantingPage() {
       }
     }
 
-    // Trigger background auto-sync & auto-fulfillment check with Supabase API
+    // Load today's counter from the server (it only PRE-FILLS the daily log form; it never creates a log or points)
     fetch('/api/sync-chanting', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
       .then(res => res.json())
       .then(data => {
         if (data.success) {
           if (data.todayRounds > 0) {
             setTodayRounds(prev => Math.max(prev, data.todayRounds));
-          }
-          if (data.autoFulfilledDates && data.autoFulfilledDates.length > 0) {
-            toast.custom((t) => (
-              <div className="bg-emerald-950 border border-emerald-500/40 text-emerald-200 p-4 rounded-2xl shadow-2xl flex items-center gap-3">
-                <ShieldCheck className="text-emerald-400 flex-shrink-0" size={24} />
-                <div className="text-xs">
-                  <p className="font-bold text-white">Auto-Fulfillment Activated! 🎉</p>
-                  <p className="text-emerald-300 mt-0.5">Your unsubmitted daily log for {data.autoFulfilledDates.join(', ')} was automatically fulfilled from your in-app chanting rounds!</p>
-                </div>
-              </div>
-            ), { duration: 6000 });
           }
         }
       })
@@ -99,7 +88,7 @@ export default function ChantingPage() {
       lastDate: todayStr
     }));
 
-    // Sync rounds with the backend (server keeps the counter; completed days are auto-filled later)
+    // Sync rounds with the backend (the server keeps the counter so the daily log form can pre-fill it)
     // only a completed round changes what the server needs to know
     if (!chantingEnabled || !syncServer) return;
     fetch('/api/sync-chanting', {
@@ -407,7 +396,7 @@ export default function ChantingPage() {
           <div className="bg-slate-900 text-white rounded-3xl p-6 shadow-xl relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
             <h4 className="text-sm font-black uppercase tracking-wider text-amber-400 mb-3 flex items-center gap-2">
-              <span>✨ Fail-Safe Japa Protection</span>
+              <span>✨ Digital Japa Counter</span>
             </h4>
             <ul className="space-y-2.5 text-xs text-slate-300 font-semibold leading-relaxed">
               <li className="flex items-start gap-2">
@@ -416,11 +405,11 @@ export default function ChantingPage() {
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-amber-400 font-bold">•</span>
-                <span>Upon reaching 108, the round count automatically increments and saves to your account.</span>
+                <span>Upon reaching 108, the round count automatically increments and is remembered for your daily log.</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-amber-400 font-bold">•</span>
-                <span>If you forget to manually log your report, your chanted rounds here will <strong>auto-fulfill your report</strong> once that day is over, so your streak and shield are safe!</span>
+                <span>This counter only <strong>helps you count</strong>. Your score comes from the daily log you submit (Leaderboard → Log Activity), where today&apos;s counted rounds are pre-filled for you.</span>
               </li>
             </ul>
           </div>
@@ -429,7 +418,7 @@ export default function ChantingPage() {
 
       </div>
 
-      {/* Rules & Auto-Fulfillment Protection Dialog Modal */}
+      {/* Rules & Daily Log Dialog Modal */}
       <AnimatePresence>
         {isInfoModalOpen && (
           <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
@@ -455,10 +444,10 @@ export default function ChantingPage() {
                   </div>
                   <div>
                     <h2 className="text-base font-black text-slate-900 tracking-tight">
-                      Chanting & Auto-Fulfillment
+                      Japa Counter & Daily Log
                     </h2>
                     <span className="inline-flex items-center gap-1 text-[9px] font-extrabold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/60">
-                      <ShieldCheck size={10} /> Fail-Safe Active
+                      <ShieldCheck size={10} /> Pre-fills your log
                     </span>
                   </div>
                 </div>
@@ -476,13 +465,13 @@ export default function ChantingPage() {
                 </p>
                 <div className="bg-amber-50/70 border border-amber-200/70 p-4 rounded-2xl space-y-2">
                   <h4 className="text-[11px] font-black text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
-                    <span>⚡ How Auto-Fulfillment Works</span>
+                    <span>⚡ How the counter relates to your log</span>
                   </h4>
                   <p className="text-[11px] text-slate-700 leading-snug">
-                    We recommend manually logging your daily activity in the <strong className="text-indigo-600">Leaderboard &gt; Log Activity</strong> tab for official report tracking.
+                    The leaderboard is fed <strong>only</strong> by the daily log you submit in <strong className="text-indigo-600">Leaderboard &gt; Log Activity</strong>.
                   </p>
                   <p className="text-[11px] text-slate-700 leading-snug">
-                    However, if you chant using this counter but <strong className="text-amber-950 font-bold">forget to manually submit your daily report</strong>, your in-app chanted rounds will <strong className="text-emerald-700 font-extrabold">automatically auto-fulfill your daily report</strong> once that day is over (IST midnight). A day that is still in progress is never locked, so you can still submit it yourself.
+                    The rounds you count here are remembered and <strong className="text-emerald-700 font-extrabold">pre-filled</strong> in that form, but they never create a log or points by themselves.
                   </p>
                 </div>
                 {competition && includesChanting(competition.type) && buildRulesText(competition).filter((x) => x.heading === 'Chanting' || x.heading === 'Schedule').map((sec) => (
@@ -494,7 +483,7 @@ export default function ChantingPage() {
                   </div>
                 ))}
                 <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/70 text-[11px] text-slate-500">
-                  💡 <strong>Streak Protection:</strong> Auto-fulfillment guarantees that your daily streak is maintained and your 🛡️ Streak Shield is never wasted on forgotten reports.
+                  💡 <strong>Remember:</strong> submit your daily log every day to keep your streak. A day without a submitted log breaks it (a Streak Shield can bridge one missed day).
                 </div>
               </div>
 

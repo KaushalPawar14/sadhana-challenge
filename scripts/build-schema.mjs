@@ -13,7 +13,7 @@ const tables = [...baseline.matchAll(/^create table public\.(\w+) \((?:.|\n)*?\)
   .map((m) => m[0]);
 
 const migDir = path.join(root, 'supabase/migrations');
-const structural = fs.readdirSync(migDir).filter((f) => /^20261031000[12356]00_.*\.sql$/.test(f)).sort();
+const structural = fs.readdirSync(migDir).filter((f) => /^20261031000[123567]00_.*\.sql$/.test(f)).sort();
 
 const out = [
   '-- =====================================================================',

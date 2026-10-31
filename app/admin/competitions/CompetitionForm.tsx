@@ -22,8 +22,8 @@ import { CompetitionActions, StatusBadge, ViewOnlyNote, useCompetitions } from '
 type Cfg = Record<string, any>;
 
 const NUMERIC_KEYS: (keyof CompetitionConfig)[] = [
-  'chanting_points_at_commitment', 'streak_multiplier_cap', 'shield_count', 'reading_points_per_minute',
-  'reading_daily_cap_minutes', 'reading_min_session_seconds', 'weight_reading', 'weight_chanting',
+  'chanting_points_at_commitment', 'streak_multiplier_cap', 'shield_count', 'reading_points_at_commitment',
+  'weight_reading', 'weight_chanting',
   'quiz_points_per_correct', 'listen_threshold_pct', 'late_log_days',
 ];
 
@@ -66,7 +66,7 @@ function NumField({
 }
 
 const TYPE_CARDS: { value: CompetitionType; title: string; text: string; icon: React.ElementType }[] = [
-  { value: 'reading', title: 'Reading', text: 'Students read books in the app; minutes earn points.', icon: BookOpen },
+  { value: 'reading', title: 'Reading', text: 'Students log their daily reading minutes against their commitment.', icon: BookOpen },
   { value: 'chanting', title: 'Chanting', text: 'Students log daily japa rounds against their commitment.', icon: Flame },
   { value: 'both', title: 'Both', text: 'Reading and chanting are scored together with weights.', icon: Layers },
 ];
@@ -381,12 +381,8 @@ export default function CompetitionForm({ competitionId }: { competitionId?: str
                 <div className="space-y-4">
                   <h4 className="text-xs font-black uppercase tracking-widest text-indigo-600">Reading</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <NumField label="Points per minute" step={0.1} value={cfg.reading_points_per_minute} onChange={(v) => setC('reading_points_per_minute', v)}
-                      help="Points for each full minute read. Default 1." />
-                    <NumField label="Daily cap (minutes)" value={cfg.reading_daily_cap_minutes} onChange={(v) => setC('reading_daily_cap_minutes', v)}
-                      help="Minutes beyond this per day earn nothing. Default 60." />
-                    <NumField label="Minimum session (seconds)" value={cfg.reading_min_session_seconds} onChange={(v) => setC('reading_min_session_seconds', v)}
-                      help="Reading sessions shorter than this are ignored. Default 10." />
+                    <NumField label="Points at 100% of reading commitment" value={cfg.reading_points_at_commitment} onChange={(v) => setC('reading_points_at_commitment', v)}
+                      help="Base points = (minutes logged ÷ the student's reading commitment) × this number. Default 10. Students log their reading in the daily log; the app never measures it." />
                   </div>
                 </div>
               )}

@@ -12,9 +12,7 @@ export interface CompetitionConfig {
   streak_multiplier_enabled: boolean;
   streak_multiplier_cap: number;
   shield_count: number;
-  reading_points_per_minute: number;
-  reading_daily_cap_minutes: number;
-  reading_min_session_seconds: number;
+  reading_points_at_commitment: number; // points for reading 100% of the reading commitment (default 10)
   weight_reading: number;
   weight_chanting: number;
   quiz_points_per_correct: number;
@@ -30,9 +28,7 @@ export const DEFAULT_CONFIG: CompetitionConfig = {
   streak_multiplier_enabled: true,
   streak_multiplier_cap: 5,
   shield_count: 1,
-  reading_points_per_minute: 1,
-  reading_daily_cap_minutes: 60,
-  reading_min_session_seconds: 10,
+  reading_points_at_commitment: 10,
   weight_reading: 1,
   weight_chanting: 1,
   quiz_points_per_correct: 5,
@@ -205,7 +201,7 @@ export function buildRulesText(c: Pick<Competition, 'type' | 'bonus_enabled' | '
     if (cfg.shield_count > 0) {
       items.push(`Streak shield: you have ${cfg.shield_count} shield${cfg.shield_count > 1 ? 's' : ''}; each protects your streak across one missed day.`);
     }
-    items.push('Rounds counted on the Japa counter automatically fill a day you forget to submit, once that day is over.');
+    items.push('The Japa counter only helps you count: your score comes from the daily log you submit.');
     sections.push({ heading: 'Chanting', items });
   }
 
@@ -213,10 +209,10 @@ export function buildRulesText(c: Pick<Competition, 'type' | 'bonus_enabled' | '
     sections.push({
       heading: 'Reading',
       items: [
-        `At your first activity you must set your daily reading commitment: 1 to 60 minutes. It can only be raised later, never lowered.`,
-        `Read inside the app’s Books section. Every full minute earns ${fmt(cfg.reading_points_per_minute)} point${cfg.reading_points_per_minute === 1 ? '' : 's'}.`,
-        `At most ${fmt(cfg.reading_daily_cap_minutes)} minutes per day count.`,
-        `Time is measured by the server while you are actively reading; sessions shorter than ${fmt(cfg.reading_min_session_seconds)} seconds are ignored.`,
+        `At your first log you must set your daily reading commitment: 1 to 60 minutes. It can only be raised later, never lowered.`,
+        `Log the minutes of book reading you did each day in your daily log. The app does not measure your reading.`,
+        `Reading score = (minutes read ÷ your reading commitment) × ${fmt(cfg.reading_points_at_commitment)}. Reading 100% of your commitment earns ${fmt(cfg.reading_points_at_commitment)} base points.`,
+        cfg.streak_multiplier_enabled ? 'The same streak multiplier applies to your reading points.' : 'There is no streak multiplier in this competition.',
       ],
     });
   }
@@ -257,8 +253,8 @@ export function validateCompetitionInput(i: {
   if (!i.start_date || !i.end_date) return 'Start and end dates are required.';
   if (i.end_date < i.start_date) return 'End date must be on or after the start date.';
   const c = i.config;
-  for (const k of ['weight_reading', 'weight_chanting', 'chanting_points_at_commitment', 'reading_points_per_minute',
-    'reading_daily_cap_minutes', 'reading_min_session_seconds', 'quiz_points_per_correct', 'shield_count', 'late_log_days'] as const) {
+  for (const k of ['weight_reading', 'weight_chanting', 'chanting_points_at_commitment', 'reading_points_at_commitment',
+    'quiz_points_per_correct', 'shield_count', 'late_log_days'] as const) {
     const v = c[k];
     if (v !== undefined && (Number.isNaN(Number(v)) || Number(v) < 0)) return `${k.replace(/_/g, ' ')} must be 0 or more.`;
   }

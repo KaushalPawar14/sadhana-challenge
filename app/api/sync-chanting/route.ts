@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { createSupabaseServer } from '@/lib/supabase/server';
 import { friendlyError } from '@/lib/errors';
 
-// POST only: this endpoint writes (counter rounds + auto-fulfilment), so GET must never mutate.
-// All logic lives in the database function public.sync_chanting (transactional, IST, completed days only).
+// POST only: this endpoint writes (the Japa counter), so GET must never mutate.
+// The counter only PRE-FILLS the daily log form: it never creates a log or points (public.sync_chanting).
 export async function POST(request: Request) {
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();

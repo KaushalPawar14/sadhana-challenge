@@ -21,12 +21,13 @@ export function scoreChantingDay(rounds: number, commitment: number, streak: num
   return { base, multiplier, points: base * multiplier };
 }
 
-/** whole minutes per day, capped; points = capped minutes × points per minute */
-export function scoreReadingDay(totalCountedSeconds: number, cfg: Partial<CompetitionConfig>) {
+/** reading works like chanting: base = round(minutes / reading commitment x points_at_commitment); points = base x streak multiplier */
+export function scoreReadingDay(minutes: number, commitmentMinutes: number, streak: number, cfg: Partial<CompetitionConfig>) {
   const c = mergeConfig(cfg);
-  const minutes = Math.floor(totalCountedSeconds / 60);
-  const counted = Math.min(minutes, c.reading_daily_cap_minutes);
-  return { minutes, counted, points: counted * c.reading_points_per_minute };
+  const commit = commitmentMinutes > 0 ? commitmentMinutes : 30;
+  const base = Math.round((minutes / commit) * c.reading_points_at_commitment);
+  const multiplier = streakMultiplier(streak, c);
+  return { base, multiplier, points: base * multiplier };
 }
 
 export function weightedTotal(

@@ -127,18 +127,12 @@ export default function LeaderboardPage() {
 
   useEffect(() => { loadMyState(); }, [loadMyState, openId]);
 
-  // auto-fulfil completed chanting days from the Japa counter (POST only, never on GET)
+  // keep the Japa counter in sync with the server (it only pre-fills the log form)
   useEffect(() => {
     if (!user || isAdmin) return;
     fetch('/api/sync-chanting', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
       .then((res) => res.json())
-      .then((data) => {
-        if (data?.autoFulfilledDates?.length > 0) {
-          toast.success(`🎉 Auto-filled ${data.autoFulfilledDates.join(', ')} from your recorded chanting!`);
-          if (selectedIdRef.current) loadBoard(selectedIdRef.current, true);
-          loadMyState();
-        }
-      })
+      .then(() => {})
       .catch(() => {});
   }, [user, isAdmin, loadBoard, loadMyState]);
 
@@ -200,7 +194,7 @@ export default function LeaderboardPage() {
 
   const isOpenSelected = !!selected && selected.id === openId;
   const loggable = myState?.competition_id === selected?.id ? myState?.loggable_dates ?? [] : [];
-  const canLogChanting = isOpenSelected && !!selected && includesChanting(selected.type) && !isAdmin;
+  const canLogChanting = isOpenSelected && !!selected && (includesChanting(selected.type) || includesReading(selected.type)) && !isAdmin;
   const today = istToday();
 
   const afterLog = () => {
@@ -223,14 +217,14 @@ export default function LeaderboardPage() {
       case 'chanting': {
         const dates: string[] = ev.detail?.dates || [];
         return {
-          message: ev.detail?.auto
-            ? `had ${dates.length || 1} completed day${dates.length > 1 ? 's' : ''} auto-filled from the Japa counter`
+          message: ev.detail?.minutes != null
+            ? `completed daily Sadhana: chanted ${ev.detail?.rounds ?? 0} rounds and read for ${ev.detail.minutes} min!`
             : `completed daily Sadhana: chanted ${ev.detail?.rounds ?? 0} rounds!`,
           detail: gainText, emoji: '📿', style: 'text-emerald-600 bg-emerald-50 border border-emerald-100/50',
         };
       }
       case 'reading':
-        return { message: `finished a reading session of ${ev.detail?.minutes ?? 0} min`, detail: gainText, emoji: '📖', style: 'text-teal-600 bg-teal-50 border border-teal-100/50' };
+        return { message: `logged ${ev.detail?.minutes ?? 0} min of book reading!`, detail: gainText, emoji: '📖', style: 'text-teal-600 bg-teal-50 border border-teal-100/50' };
       case 'quiz_bonus':
         return {
           message: `scored ${ev.detail?.score ?? 0}/${ev.detail?.max ?? 0} on the audiobook quiz "${ev.detail?.title ?? ''}"! 🧠`,
@@ -362,14 +356,6 @@ export default function LeaderboardPage() {
                   <span>All Logs Filled ✓</span>
                 </div>
               )
-            )}
-            {isOpenSelected && includesReading(selected.type) && !isAdmin && (
-              <Link
-                href="/books"
-                className="bg-teal-600 hover:bg-teal-700 text-white p-3.5 rounded-2xl flex items-center justify-center gap-2 flex-1 md:flex-initial min-w-[130px] shadow-md shadow-teal-500/10 transition-all font-bold text-xs md:text-sm whitespace-nowrap"
-              >
-                <BookOpen size={16} /> Start reading
-              </Link>
             )}
           </div>
         </div>

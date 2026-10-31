@@ -36,30 +36,17 @@ for (const a of [HOD, GUIDE, ENM, ENF]) await db.query('insert into public.admin
 const [book] = await q("insert into public.books (title, language, pdf_link) values ('TEST_BOOK','English','https://www.dropbox.com/x.pdf') returning id");
 
 const saveComp = (who, o) => as(db, who, 'select public.save_competition($1::jsonb) id', [JSON.stringify(o)]);
-const log = (who, date, rounds) => as(db, who, 'select public.log_chanting($1::date,$2::int) r', [date, rounds]);
+const log = (who, date, rounds, minutes = null) => as(db, who, 'select public.log_activity($1::date,$2::int,$3::int) r', [date, rounds, minutes]);
 const totals = async (comp, user) => (await q('select * from public.competition_totals where competition_id=$1 and user_id=$2', [comp, user]))[0];
 const iso = (d, h = 4, m = 30) => `${d}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00Z`; // 04:30Z = 10:00 IST
 
-// reading session helper: heartbeat every 30s for `seconds`, then end
-async function readFor(who, bookId, startIso, seconds) {
-  const t0 = new Date(startIso).getTime();
-  await setClock(db, new Date(t0).toISOString());
-  const { rows: [{ sid }] } = await as(db, who, 'select public.start_reading_session($1::uuid) sid', [bookId]);
-  for (let s = 30; s <= seconds; s += 30) {
-    await setClock(db, new Date(t0 + s * 1000).toISOString());
-    await as(db, who, 'select public.heartbeat_reading_session($1::uuid)', [sid]);
-  }
-  await as(db, who, 'select public.end_reading_session($1::uuid, true)', [sid]);
-  return sid;
-}
-
 // =====================================================================
-scenario('1. Reading competition, bonus OFF');
+scenario('1. Reading competition = a daily LOG scored by commitment (bonus OFF)');
 await setClock(db, iso('2026-11-09'));
 const { rows: [{ id: R }] } = await saveComp(HOD, { title: 'TEST Reading', type: 'reading', bonus_enabled: false, start_date: '2026-11-09', end_date: '2026-11-15', status: 'published' });
-await rejects(log(S1, '2026-11-09', 5), /CHANTING_NOT_ENABLED/, 'chanting log is blocked');
+await rejects(log(S1, '2026-11-09', 5, 30), /CHANTING_NOT_ENABLED/, 'reading-only: a chanting value is refused');
 await rejects(as(db, S1, 'select public.set_commitment(10)'), /CHANTING_NOT_ENABLED/, 'commitment blocked');
-await rejects(as(db, S1, 'select public.start_reading_session($1::uuid)', [book.id]), /READING_COMMITMENT_REQUIRED/, 'reading-only: reading commitment is mandatory before the first session');
+await rejects(log(S1, '2026-11-09', null, 30), /READING_COMMITMENT_REQUIRED/, 'reading-only: reading commitment is mandatory before the first log');
 await rejects(as(db, S1, 'select public.set_commitment(10, null)'), /CHANTING_NOT_ENABLED/, 'reading-only: no chanting commitment is asked');
 await rejects(as(db, S1, 'select public.set_commitment(null, 61)'), /INVALID_READING_COMMITMENT/, 'reading commitment can never exceed 60 minutes');
 await rejects(as(db, S1, 'select public.set_commitment(null, 0)'), /INVALID_READING_COMMITMENT/, 'reading commitment must be at least 1 minute');
@@ -67,31 +54,36 @@ await rejects(as(db, S1, 'select public.set_commitment(null, null)'), /READING_C
 await as(db, S1, 'select public.set_commitment(null, 30)');
 await rejects(as(db, S1, 'select public.set_commitment(null, 20)'), /READING_COMMITMENT_CANNOT_DECREASE/, 'reading commitment can only be raised');
 await as(db, S1, 'select public.set_commitment(null, 60)'); ok(true, 'reading commitment can be raised up to 60');
-eq((await q('select reading_commitment_minutes m, commitment_rounds r from public.competition_participants where competition_id=$1 and user_id=$2', [R, S1.id]))[0].m, 60, 'reading commitment stored');
+eq((await q('select reading_commitment_minutes m from public.competition_participants where competition_id=$1 and user_id=$2', [R, S1.id]))[0].m, 60, 'reading commitment stored');
 ok((await q('select commitment_rounds r from public.competition_participants where competition_id=$1 and user_id=$2', [R, S1.id]))[0].r === null, 'reading-only: no chanting commitment stored');
 await as(db, S2, 'select public.set_commitment(null, 15)'); await as(db, S3, 'select public.set_commitment(null, 15)');
-await readFor(S1, book.id, iso('2026-11-09'), 12 * 60);
+await rejects(log(S1, '2026-11-09', null, null), /INVALID_MINUTES/, 'minutes are required in a reading log');
+await rejects(log(S1, '2026-11-09', null, 601), /INVALID_MINUTES/, 'implausible minutes refused');
+await log(S1, '2026-11-09', null, 30);
 let t = await totals(R, S1.id);
-eq(t.reading_points, 12, 'reading earns 1 point/min -> 12 min = 12 points');
-eq(t.total, 12, 'total = reading points');
+eq(t.reading_points, 5, 'reading scored by commitment: 30 of 60 min x 10 = 5 points (day 1, x1)');
+eq(t.total, 5, 'total = reading points');
+await setClock(db, iso('2026-11-10'));
+await log(S1, '2026-11-10', null, 60);
+t = await totals(R, S1.id);
+eq(t.reading_points, 25, 'day 2: 60 of 60 min = 10 x streak 2 = 20 -> 25 total');
+eq(t.current_streak, 2, 'reading logs build the streak like chanting');
+await rejects(log(S1, '2026-11-10', null, 60), /ALREADY_LOGGED/, 'one reading log per day');
+await rejects(as(db, S1, 'select public.start_reading_session(gen_random_uuid())'), /does not exist/, 'in-app reading tracking no longer exists (leaderboard comes from the log only)');
+const rl = (await q("select meta from public.points_ledger where competition_id=$1 and user_id=$2 and source='reading' order by activity_date", [R, S1.id]));
+ok(rl[0].meta.commitment === 60 && rl[0].meta.minutes === 30, 'ledger row records minutes + commitment');
 await rejects(as(db, S1, "select public.start_listening(gen_random_uuid(), 100)"), /BONUS_NOT_ENABLED/, 'quiz/listening is blocked');
-eq((await as(db, S1, "select count(*)::int n from public.books where title='TEST_BOOK'")).rows[0].n, 1, 'books are visible to students');
+eq((await as(db, S1, "select count(*)::int n from public.books where title='TEST_BOOK'")).rows[0].n, 1, 'books stay readable (library only, no tracking)');
 eq((await as(db, S1, 'select count(*)::int n from public.audiobooks')).rows[0].n, 0, 'audiobooks/quiz hidden from students (RLS)');
-// server-timed: spamming heartbeats cannot inflate
-await setClock(db, iso('2026-11-09', 5, 0));
-const { rows: [{ sid: s2 }] } = await as(db, S1, 'select public.start_reading_session($1::uuid) sid', [book.id]);
-for (let i = 0; i < 20; i++) await as(db, S1, 'select public.heartbeat_reading_session($1::uuid)', [s2]);
-await as(db, S1, 'select public.end_reading_session($1::uuid,true)', [s2]);
-eq((await q('select counted_seconds from public.reading_sessions where session_id=$1', [s2]))[0].counted_seconds, 0, '20 instant heartbeats + end credit 0 seconds (server clock)');
-const feed = await q("select kind, delta from public.activity_feed where competition_id=$1 and kind='reading'", [R]);
-ok(feed.length === 1 && Number(feed[0].delta.total) === 12, 'feed event carries the points delta');
+const feed = await q("select kind, delta from public.activity_feed where competition_id=$1 and kind='reading' order by created_at", [R]);
+ok(feed.length === 2 && Number(feed[0].delta.total) === 5, 'feed events carry the points delta');
 
 // =====================================================================
 scenario('2. Chanting competition, bonus ON (server-graded quiz)');
 await setClock(db, iso('2026-11-20'));
 const { rows: [{ id: C }] } = await saveComp(HOD, { title: 'TEST Chanting', type: 'chanting', bonus_enabled: true, start_date: '2026-11-20', end_date: '2026-11-26', status: 'published',
   config: { streak_multiplier_cap: 2 } });
-await rejects(as(db, S1, 'select public.start_reading_session($1::uuid)', [book.id]), /READING_NOT_ENABLED/, 'reading is blocked');
+await rejects(log(S1, '2026-11-20', 10, 30), /READING_NOT_ENABLED/, 'chanting-only: a reading value is refused');
 await rejects(log(S1, '2026-11-20', 10), /COMMITMENT_REQUIRED/, 'commitment required first');
 await rejects(as(db, S1, 'select public.set_commitment(17)'), /INVALID_COMMITMENT/, 'chanting commitment can never exceed 16 rounds');
 await rejects(as(db, S1, 'select public.set_commitment(0)'), /INVALID_COMMITMENT/, 'chanting commitment must be at least 1');
@@ -136,13 +128,12 @@ eq((await q("select count(*)::int n from information_schema.columns where table_
 scenario('3. Both competition, bonus ON, weights chanting 1 / reading 2');
 await setClock(db, iso('2026-12-01'));
 const { rows: [{ id: B }] } = await saveComp(HOD, { title: 'TEST Both', type: 'both', bonus_enabled: true, start_date: '2026-12-01', end_date: '2026-12-07', status: 'published',
-  config: { weight_chanting: 1, weight_reading: 2, reading_daily_cap_minutes: 5, reading_min_session_seconds: 10 } });
-await rejects(log(S1, '2026-12-01', 16), /COMMITMENT_REQUIRED/, 'both: first log asks for the commitments');
+  config: { weight_chanting: 1, weight_reading: 2 } });
+await rejects(log(S1, '2026-12-01', 16, 15), /COMMITMENT_REQUIRED/, 'both: first log asks for the commitments');
 await rejects(as(db, S1, 'select public.set_commitment(16, null)'), /READING_COMMITMENT_REQUIRED/, 'both: chanting commitment alone is not enough');
 await rejects(as(db, S1, 'select public.set_commitment(null, 30)'), /COMMITMENT_REQUIRED/, 'both: reading commitment alone is not enough');
 await rejects(as(db, S1, 'select public.set_commitment(17, 30)'), /INVALID_COMMITMENT/, 'both: rounds above 16 rejected');
 await rejects(as(db, S1, 'select public.set_commitment(16, 61)'), /INVALID_READING_COMMITMENT/, 'both: minutes above 60 rejected');
-await rejects(as(db, S1, 'select public.start_reading_session($1::uuid)', [book.id]), /READING_COMMITMENT_REQUIRED/, 'both: reading is blocked until the commitments are given');
 await as(db, S1, 'select public.set_commitment(16, 30)');
 const both = (await q('select commitment_rounds r, reading_commitment_minutes m from public.competition_participants where competition_id=$1 and user_id=$2', [B, S1.id]))[0];
 ok(both.r === 16 && both.m === 30, 'both: rounds and minutes stored together (16 / 30)');
@@ -150,11 +141,10 @@ await as(db, S2, 'select public.set_commitment(16, 30)');
 await as(db, S3, 'select public.set_commitment(16, 30)');
 const st3 = (await as(db, S1, 'select public.get_my_state() s')).rows[0].s;
 ok(st3.required.chanting && st3.required.reading && st3.commitment === 16 && st3.reading_commitment === 30, 'get_my_state reports both commitments');
-await log(S1, '2026-12-01', 16);
-await readFor(S1, book.id, iso('2026-12-01', 6, 0), 8 * 60);
+await log(S1, '2026-12-01', 16, 15);
 await as(db, HOD, 'select public.give_bonus($1::uuid, 7, $2)', [S1.id, 'TEST service']);
 t = await totals(B, S1.id);
-eq(t.chanting_points, 10, 'chanting 16/16 -> 10'); eq(t.reading_points, 5, 'reading 8 min capped to 5 min -> 5');
+eq(t.chanting_points, 10, 'chanting 16/16 -> 10'); eq(t.reading_points, 5, 'reading 15 of 30 min x 10 -> 5');
 eq(t.bonus_points, 7, 'manual bonus 7'); eq(t.total, 10 * 1 + 5 * 2 + 7, 'total = 10*1 + 5*2 + 7 = 27');
 const rb = await as(db, HOD, 'select public.rebuild_competition_totals($1::uuid) n', [B]);
 eq((await totals(B, S1.id)).total, 27, 'rebuild_competition_totals reproduces the same total');
@@ -162,9 +152,9 @@ await sys('delete from public.competition_totals where competition_id=$1', [B]);
 await as(db, HOD, 'select public.rebuild_competition_totals($1::uuid)', [B]);
 eq((await totals(B, S1.id)).total, 27, 'totals fully rebuildable from logs/sessions/ledger');
 // extra data for later finalization
-await log(S2, '2026-12-01', 8);                       // 5 pts
-await setClock(db, iso('2026-12-02')); await log(S2, '2026-12-02', 16); // streak 2 -> 20
-await log(S3, '2026-12-02', 16);                      // 10
+await log(S2, '2026-12-01', 8, 0);                    // 5 pts
+await setClock(db, iso('2026-12-02')); await log(S2, '2026-12-02', 16, 0); // streak 2 -> 20
+await log(S3, '2026-12-02', 16, 0);                   // 10
 const lb = (await as(db, S1, 'select * from public.get_leaderboard($1::uuid)', [B])).rows;
 ok(!('mobile' in lb[0]), 'leaderboard exposes no phone numbers'); eq(lb[0].user_id, S1.id, 'S1 leads the leaderboard');
 const { rows: fd } = await as(db, S2, 'select kind from public.activity_feed where competition_id=$1', [B]);
@@ -185,15 +175,14 @@ await rejects(saveComp(HOD, { id: B, title: 'TEST Both', type: 'both', bonus_ena
 // =====================================================================
 scenario('5. Logging before start / after end is rejected');
 await setClock(db, iso('2026-11-30'));
-await rejects(log(S1, '2026-11-30', 16), /NO_ACTIVE_COMPETITION/, 'day before start: no active competition');
+await rejects(log(S1, '2026-11-30', 16, 0), /NO_ACTIVE_COMPETITION/, 'day before start: no active competition');
 await setClock(db, iso('2026-12-03'));
-await rejects(log(S1, '2026-11-30', 16), /DATE_OUTSIDE_COMPETITION/, 'date before start rejected');
+await rejects(log(S1, '2026-11-30', 16, 0), /DATE_OUTSIDE_COMPETITION/, 'date before start rejected');
 await setClock(db, iso('2026-12-08'));
-await log(S3, '2026-12-07', 16).then(() => ok(true, 'last day may be submitted within the 1-day grace'));
-await rejects(log(S3, '2026-12-08', 16), /DATE_OUTSIDE_COMPETITION/, 'date after end rejected');
+await log(S3, '2026-12-07', 16, 0).then(() => ok(true, 'last day may be submitted within the 1-day grace'));
+await rejects(log(S3, '2026-12-08', 16, 0), /DATE_OUTSIDE_COMPETITION/, 'date after end rejected');
 await setClock(db, iso('2026-12-09'));
-await rejects(log(S1, '2026-12-07', 16), /NO_ACTIVE_COMPETITION/, 'after end + grace: rejected');
-await rejects(as(db, S1, 'select public.start_reading_session($1::uuid)', [book.id]), /NO_ACTIVE_COMPETITION/, 'reading after end rejected');
+await rejects(log(S1, '2026-12-07', 16, 0), /NO_ACTIVE_COMPETITION/, 'after end + grace: rejected');
 
 // =====================================================================
 scenario('6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)');
@@ -345,10 +334,12 @@ await as(db, S3, 'select public.sync_chanting(null)');
 await as(db, S3, 'select public.sync_chanting(5)');            // 4 Feb: 5 rounds
 await setClock(db, '2027-02-05T05:00:00Z');
 sy = (await as(db, S3, 'select public.sync_chanting(null) r')).rows[0].r;
-eq(JSON.stringify(sy.autoFulfilledDates), '["2027-02-04"]', 'completed day auto-fulfilled exactly once');
+eq(sy.autoFulfilledDates.length, 0, 'the Japa counter NEVER creates a log/points (leaderboard = submitted log only)');
+eq((await q("select rounds_chanted r from public.user_chanting_logs where user_id=$1 and log_date='2027-02-04'", [S3.id]))[0].r, 5, 'counter value is stored so the log form can pre-fill it');
+eq((await q("select count(*)::int n from public.activity_logs where user_id=$1 and log_date='2027-02-04'", [S3.id]))[0].n, 0, 'no activity log was created from the counter');
 sy = (await as(db, S3, 'select public.sync_chanting(null) r')).rows[0].r;
-eq(sy.autoFulfilledDates.length, 0, 'second sync does not double count');
-eq((await q("select count(*)::int n from public.points_ledger where user_id=$1 and competition_id=$2 and source='chanting'", [S3.id, E]))[0].n, 2, 'one ledger row per day');
+eq(sy.autoFulfilledDates.length, 0, 'second sync still creates nothing');
+eq((await q("select count(*)::int n from public.points_ledger where user_id=$1 and competition_id=$2 and source='chanting'", [S3.id, E]))[0].n, 1, 'only the submitted log is in the ledger');
 await rejects(as(db, S1, 'select public.sync_chanting(9999)'), /INVALID_ROUNDS/, 'implausible counter rejected');
 
 // =====================================================================

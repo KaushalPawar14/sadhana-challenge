@@ -11,6 +11,7 @@ const MESSAGES: Record<string, string> = {
   FUTURE_DATE: 'You cannot log a future date.',
   LATE_NOT_ALLOWED: 'That day is too old to submit now.',
   INVALID_ROUNDS: 'Please enter a valid number of rounds.',
+  INVALID_MINUTES: 'Please enter a valid number of reading minutes (0 to 600).',
   ALREADY_LOGGED: 'You have already logged that day.',
   COMMITMENT_REQUIRED: 'Set your daily chanting commitment (rounds) first.',
   READING_COMMITMENT_REQUIRED: 'Set your daily reading commitment (minutes) first.',

@@ -96,7 +96,7 @@ export function CommitmentForm({ competition, current, defaultRounds, onSaved }:
           )}
           {needMinutes && (
             <p className="text-xs font-semibold leading-relaxed text-slate-700 dark:text-slate-300">
-              📖 <strong>Reading</strong> is tracked automatically while you read in the Books section. Your commitment is the minutes you will read every day.
+              📖 <strong>Reading score</strong> = (minutes you log ÷ your commitment) × {cfg.reading_points_at_commitment}. You enter your reading minutes in the daily log; the app never measures your reading.
             </p>
           )}
           <p className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
