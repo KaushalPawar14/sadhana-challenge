@@ -1,5 +1,5 @@
 {
-  "at": "2026-10-31T03:57:01.178Z",
+  "at": "2026-10-31T04:20:44.698Z",
   "backup": "2026-10-31T02-13-14-991Z",
   "pass": 199,
   "fail": 0,
@@ -301,7 +301,7 @@
     },
     {
       "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
-      "check": "S1 leads the leaderboard (got cc3c6bd8-a119-41fe-a072-5fe934ab0001, expected cc3c6bd8-a119-41fe-a072-5fe934ab0001)",
+      "check": "S1 leads the leaderboard (got a2e0a3fb-fa32-4c3f-8dd6-13068b8d4161, expected a2e0a3fb-fa32-4c3f-8dd6-13068b8d4161)",
       "pass": true
     },
     {
@@ -646,7 +646,7 @@
     },
     {
       "scenario": "8. Finalize: suggested winners, swap, freeze",
-      "check": "suggested Rising Sadhaka = S1 (highest total) (got cc3c6bd8-a119-41fe-a072-5fe934ab0001, expected cc3c6bd8-a119-41fe-a072-5fe934ab0001)",
+      "check": "suggested Rising Sadhaka = S1 (highest total) (got a2e0a3fb-fa32-4c3f-8dd6-13068b8d4161, expected a2e0a3fb-fa32-4c3f-8dd6-13068b8d4161)",
       "pass": true
     },
     {
@@ -676,7 +676,7 @@
     },
     {
       "scenario": "8. Finalize: suggested winners, swap, freeze",
-      "check": "frozen standings: S1 first (got cc3c6bd8-a119-41fe-a072-5fe934ab0001, expected cc3c6bd8-a119-41fe-a072-5fe934ab0001)",
+      "check": "frozen standings: S1 first (got a2e0a3fb-fa32-4c3f-8dd6-13068b8d4161, expected a2e0a3fb-fa32-4c3f-8dd6-13068b8d4161)",
       "pass": true
     },
     {

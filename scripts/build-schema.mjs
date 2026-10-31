@@ -13,7 +13,10 @@ const tables = [...baseline.matchAll(/^create table public\.(\w+) \((?:.|\n)*?\)
   .map((m) => m[0]);
 
 const migDir = path.join(root, 'supabase/migrations');
-const structural = fs.readdirSync(migDir).filter((f) => /^20261031000[123567]00_.*\.sql$/.test(f)).sort();
+// every migration from the competition system onward, except the one-off legacy data migration (000400)
+const structural = fs.readdirSync(migDir)
+  .filter((f) => /^\d{14}_.*\.sql$/.test(f) && f >= '20261031000100' && !f.includes('migrate_competition_1'))
+  .sort();
 
 const out = [
   '-- =====================================================================',

@@ -12,7 +12,8 @@ export function latestBackup() {
   return ds.length ? path.join(dir, ds[ds.length - 1]) : null;
 }
 
-export const newMigrations = () => fs.readdirSync(migDir).filter(f => /^2026103100\d+_.*\.sql$/.test(f)).sort();
+// every migration from the competition system onward (the older ones are already part of the baseline)
+export const newMigrations = () => fs.readdirSync(migDir).filter(f => /^\d{14}_.*\.sql$/.test(f) && f >= '20261031000100').sort();
 
 export async function createDb({ withBackup = true, migrate = true } = {}) {
   const db = new PGlite();

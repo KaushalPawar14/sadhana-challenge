@@ -22,7 +22,9 @@ for (const l of fs.readFileSync(path.join(root, '.env.local'), 'utf8').split(/\r
 }
 const ref = new URL(env.NEXT_PUBLIC_SUPABASE_URL).hostname.split('.')[0];
 const dir = path.join(root, 'supabase/migrations');
-const files = fs.readdirSync(dir).filter((f) => /^20261031000\d00_.*\.sql$/.test(f)).sort();
+// pass file names to apply only those, e.g.  node scripts/apply-migrations.mjs --yes 20261031000800_x.sql
+const only = process.argv.slice(2).filter((a) => a.endsWith('.sql'));
+const files = (only.length ? only : fs.readdirSync(dir).filter((f) => /^\d{14}_.*\.sql$/.test(f) && f >= '20261031000100')).sort();
 
 for (const f of files) {
   process.stdout.write(`applying ${f} ... `);

@@ -1,3 +1,5 @@
+> **Note:** this README describes the original single-challenge version of the app. The system has since been rebuilt (configurable competitions, log-based scoring, awards, hardened security). **For the current behaviour, architecture, setup and how to change things, read [GUIDE.md](GUIDE.md).**
+
 # Sadhana Challenge: Event Competition App
 
 A gamified web app where college students log their daily spiritual practice (sadhana) and compete on a live leaderboard during a time-boxed challenge event.
