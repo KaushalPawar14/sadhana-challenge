@@ -1,242 +1,81 @@
-import { createServerClient } from '@supabase/ssr';
-import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { ADMIN_ROLES, createSupabaseAdmin, getCaller, type AdminRole } from '@/lib/supabase/server';
 
-// Initialize the Supabase Service Role client to bypass RLS securely on the server
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Admin whitelist. Everyone in admin_emails may LIST (scoped to what their role may see);
+// only the HOD may add / change / remove. Every check is on the server and uses the role the
+// database derives from the verified session - never anything the client sends.
+const admin = createSupabaseAdmin();
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-async function checkAdminAuth() {
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name) {
-          return cookieStore.get(name)?.value;
-        },
-        set(name, value, options) {
-          cookieStore.set({ name, value, ...options });
-        },
-        remove(name, options) {
-          cookieStore.delete({ name, ...options });
-        },
-      },
-    }
-  );
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user || !user.email) {
-    return { authorized: false, error: 'Unauthorized', userEmail: null, userRole: null };
-  }
-
-  // Check if the current user is whitelisted as an admin and fetch role
-  const { data: adminCheck, error: adminErr } = await supabaseAdmin
-    .from('admin_emails')
-    .select('id, role')
-    .eq('email', user.email)
-    .maybeSingle();
-
-  if (adminErr || !adminCheck) {
-    return { authorized: false, error: 'Forbidden: Admins only', userEmail: user.email, userRole: null };
-  }
-
-  const role = adminCheck.role || 'HOD';
-  return { authorized: true, userEmail: user.email, userRole: role };
-}
-
-// Permission matrix for creating / managing roles
-function canAssignRole(creatorRole: string, targetRole: string): boolean {
-  if (creatorRole === 'HOD') return true;
-  if (creatorRole === 'FOLK_GUIDE') {
-    return targetRole === 'FOLK_GUIDE' || targetRole === 'FOLK_ENABLER_MALE';
-  }
-  if (creatorRole === 'FOLK_ENABLER_MALE') {
-    return targetRole === 'FOLK_ENABLER_MALE';
-  }
-  if (creatorRole === 'FOLK_ENABLER_FEMALE') {
-    return targetRole === 'FOLK_ENABLER_FEMALE';
-  }
+function canSeeAdminRole(viewer: AdminRole, target: string): boolean {
+  if (viewer === 'HOD') return true;
+  if (viewer === 'FOLK_GUIDE') return target === 'FOLK_GUIDE' || target === 'FOLK_ENABLER_MALE';
+  if (viewer === 'FOLK_ENABLER_MALE') return target === 'FOLK_ENABLER_MALE';
+  if (viewer === 'FOLK_ENABLER_FEMALE') return target === 'FOLK_ENABLER_FEMALE';
   return false;
 }
 
-// Permission matrix for viewing admin roster emails
-function canSeeAdminRole(viewerRole: string, targetRole: string): boolean {
-  if (viewerRole === 'HOD') return true;
-  if (viewerRole === 'FOLK_GUIDE') {
-    return targetRole === 'FOLK_GUIDE' || targetRole === 'FOLK_ENABLER_MALE';
-  }
-  if (viewerRole === 'FOLK_ENABLER_MALE') {
-    return targetRole === 'FOLK_ENABLER_MALE';
-  }
-  if (viewerRole === 'FOLK_ENABLER_FEMALE') {
-    return targetRole === 'FOLK_ENABLER_FEMALE';
-  }
-  return false;
+const forbidden = (msg = 'Forbidden: only the HOD can manage admins.') => NextResponse.json({ error: msg }, { status: 403 });
+
+async function hodCount(): Promise<number> {
+  const { count } = await admin.from('admin_emails').select('id', { count: 'exact', head: true }).eq('role', 'HOD');
+  return count ?? 0;
 }
 
-// GET all admin emails with role/category filtered by viewer permissions
 export async function GET() {
-  const auth = await checkAdminAuth();
-  if (!auth.authorized) {
-    return NextResponse.json({ error: auth.error }, { status: 403 });
-  }
-
-  try {
-    const { data, error } = await supabaseAdmin
-      .from('admin_emails')
-      .select('id, email, role')
-      .order('email', { ascending: true });
-
-    if (error) {
-      // Fallback if role column is missing from existing schema
-      const { data: fallbackData, error: fallbackErr } = await supabaseAdmin
-        .from('admin_emails')
-        .select('id, email')
-        .order('email', { ascending: true });
-
-      if (fallbackErr) throw fallbackErr;
-
-      const formatted = (fallbackData || []).map(a => ({
-        ...a,
-        role: 'HOD'
-      }));
-      return NextResponse.json({ 
-        admins: formatted, 
-        currentUserRole: auth.userRole || 'HOD', 
-        currentUserEmail: auth.userEmail 
-      });
-    }
-
-    const formatted = (data || [])
-      .map(a => ({
-        ...a,
-        role: a.role === 'FOLK_ENABLER' ? 'FOLK_ENABLER_MALE' : (a.role || 'HOD')
-      }))
-      .filter(a => canSeeAdminRole(auth.userRole || 'HOD', a.role));
-
-    return NextResponse.json({ 
-      admins: formatted, 
-      currentUserRole: auth.userRole || 'HOD', 
-      currentUserEmail: auth.userEmail 
-    });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
+  const { user, role } = await getCaller();
+  if (!user || !role) return forbidden('Forbidden: Admins only');
+  const { data, error } = await admin.from('admin_emails').select('id, email, role').order('email', { ascending: true });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const admins = (data || []).filter((a) => canSeeAdminRole(role, a.role));
+  return NextResponse.json({ admins, currentUserRole: role, currentUserEmail: user.email });
 }
 
-// POST: Add new admin email with role/category permission check
 export async function POST(request: Request) {
-  const auth = await checkAdminAuth();
-  if (!auth.authorized) {
-    return NextResponse.json({ error: auth.error }, { status: 403 });
+  const { user, role } = await getCaller();
+  if (!user || role !== 'HOD') return forbidden();
+  const { email, role: newRole } = await request.json().catch(() => ({}));
+  const clean = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  if (!EMAIL_RE.test(clean)) return NextResponse.json({ error: 'A valid email is required' }, { status: 400 });
+  // never insert without an explicit, valid role (no silent default - the old fallback made Enablers HODs)
+  if (!ADMIN_ROLES.includes(newRole)) return NextResponse.json({ error: 'A valid role is required' }, { status: 400 });
+
+  const { data, error } = await admin.from('admin_emails').insert({ email: clean, role: newRole }).select('id, email, role').single();
+  if (error) {
+    const dup = error.code === '23505';
+    return NextResponse.json({ error: dup ? 'That email is already an admin' : error.message }, { status: dup ? 409 : 500 });
   }
-
-  try {
-    const { email, role } = await request.json();
-    if (!email) {
-      return NextResponse.json({ error: 'Email is required' }, { status: 400 });
-    }
-
-    const validRoles = ['HOD', 'FOLK_GUIDE', 'FOLK_ENABLER_MALE', 'FOLK_ENABLER_FEMALE'];
-    const assignedRole = validRoles.includes(role) ? role : 'FOLK_ENABLER_MALE';
-
-    if (!canAssignRole(auth.userRole || 'HOD', assignedRole)) {
-      return NextResponse.json({
-        error: `Forbidden: As a ${auth.userRole}, you cannot create an admin with role ${assignedRole}.`
-      }, { status: 403 });
-    }
-
-    const { data, error } = await supabaseAdmin
-      .from('admin_emails')
-      .insert({ email: email.trim().toLowerCase(), role: assignedRole })
-      .select()
-      .single();
-
-    if (error) {
-      // Fallback if role column is missing
-      const { data: fbData, error: fbErr } = await supabaseAdmin
-        .from('admin_emails')
-        .insert({ email: email.trim().toLowerCase() })
-        .select()
-        .single();
-
-      if (fbErr) throw fbErr;
-      return NextResponse.json({ ...fbData, role: assignedRole });
-    }
-
-    return NextResponse.json(data);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
+  return NextResponse.json(data);
 }
 
-// PUT: Update admin category / role
 export async function PUT(request: Request) {
-  const auth = await checkAdminAuth();
-  if (!auth.authorized) {
-    return NextResponse.json({ error: auth.error }, { status: 403 });
+  const { user, role } = await getCaller();
+  if (!user || role !== 'HOD') return forbidden();
+  const { id, role: newRole } = await request.json().catch(() => ({}));
+  if (!id || !ADMIN_ROLES.includes(newRole)) return NextResponse.json({ error: 'ID and a valid role are required' }, { status: 400 });
+
+  const { data: target } = await admin.from('admin_emails').select('id, email, role').eq('id', id).maybeSingle();
+  if (!target) return NextResponse.json({ error: 'Admin not found' }, { status: 404 });
+  if (target.role === 'HOD' && newRole !== 'HOD' && (await hodCount()) <= 1) {
+    return NextResponse.json({ error: 'You cannot demote the last HOD.' }, { status: 400 });
   }
-
-  try {
-    const { id, role } = await request.json();
-    if (!id || !role) {
-      return NextResponse.json({ error: 'ID and role are required' }, { status: 400 });
-    }
-
-    const validRoles = ['HOD', 'FOLK_GUIDE', 'FOLK_ENABLER_MALE', 'FOLK_ENABLER_FEMALE'];
-    const assignedRole = validRoles.includes(role) ? role : 'FOLK_ENABLER_MALE';
-
-    if (!canAssignRole(auth.userRole || 'HOD', assignedRole)) {
-      return NextResponse.json({
-        error: `Forbidden: As a ${auth.userRole}, you cannot assign role ${assignedRole}.`
-      }, { status: 403 });
-    }
-
-    const { data, error } = await supabaseAdmin
-      .from('admin_emails')
-      .update({ role: assignedRole })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return NextResponse.json(data);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
+  const { data, error } = await admin.from('admin_emails').update({ role: newRole }).eq('id', id).select('id, email, role').single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json(data);
 }
 
-// DELETE: Remove admin email (Folk HOD Only)
 export async function DELETE(request: Request) {
-  const auth = await checkAdminAuth();
-  if (!auth.authorized) {
-    return NextResponse.json({ error: auth.error }, { status: 403 });
+  const { user, role } = await getCaller();
+  if (!user || role !== 'HOD') return forbidden('Forbidden: Only the HOD can remove whitelisted admins.');
+  const id = new URL(request.url).searchParams.get('id');
+  if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 });
+
+  const { data: target } = await admin.from('admin_emails').select('id, role').eq('id', id).maybeSingle();
+  if (!target) return NextResponse.json({ error: 'Admin not found' }, { status: 404 });
+  if (target.role === 'HOD' && (await hodCount()) <= 1) {
+    return NextResponse.json({ error: 'You cannot remove the last HOD.' }, { status: 400 });
   }
-
-  if (auth.userRole !== 'HOD') {
-    return NextResponse.json({ error: 'Forbidden: Only Folk HOD can remove whitelisted admins.' }, { status: 403 });
-  }
-
-  try {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
-    if (!id) {
-      return NextResponse.json({ error: 'ID is required' }, { status: 400 });
-    }
-
-    const { error } = await supabaseAdmin
-      .from('admin_emails')
-      .delete()
-      .eq('id', id);
-
-    if (error) throw error;
-    return NextResponse.json({ success: true });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
+  const { error } = await admin.from('admin_emails').delete().eq('id', id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ success: true });
 }

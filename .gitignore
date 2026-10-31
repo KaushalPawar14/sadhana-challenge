@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local DB backups (contain PII)
+/backups/
+
+# local one-off service-role scripts
+/scratch/

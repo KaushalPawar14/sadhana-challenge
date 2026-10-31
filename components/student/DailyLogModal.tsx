@@ -1,13 +1,15 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import Link from 'next/link';
+import { motion } from 'framer-motion';
 import { X, Trophy, Calendar, ChevronRight } from 'lucide-react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useAuthStore } from '@/store/authStore';
-import { calculatePoints, updateStreak, checkAwardUnlocks, CalculationResult } from '@/lib/pointsEngine';
 import { toast } from 'react-hot-toast';
-import confetti from 'canvas-confetti';
+import { friendlyError } from '@/lib/errors';
+import { formatLong, formatShort, istToday } from '@/lib/ist';
+import { includesChanting, mergeConfig, type Competition, type ActiveCompetitionPayload } from '@/lib/competition';
 
 interface DailyLogModalProps {
   isOpen: boolean;
@@ -15,352 +17,198 @@ interface DailyLogModalProps {
   onSuccess: () => void;
 }
 
+interface MyState {
+  competition_id: string | null;
+  commitment: number | null;
+  logged_dates: string[];
+  loggable_dates: string[];
+  counter_today: number;
+  default_commitment: number | null;
+}
+
+interface LogResult {
+  points: number;
+  base: number;
+  multiplier: number;
+  streak: number;
+  total: number;
+  date: string;
+}
+
+type Step = 'loading' | 'blocked' | 'commitment' | 'form' | 'summary';
+
+/**
+ * Daily chanting log. Everything that scores happens in the database (rpc log_chanting): this
+ * component only collects the rounds and shows what the server calculated.
+ */
 export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps) => {
   const { user } = useAuthStore();
 
-  // Initialize the browser client so it passes authentication cookies
   const [supabase] = useState(() => createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   ));
 
-  const [step, setStep] = useState<'commitment' | 'form' | 'summary'>('form');
+  const [step, setStep] = useState<Step>('loading');
+  const [blockedMsg, setBlockedMsg] = useState<React.ReactNode>(null);
+  const [competition, setCompetition] = useState<Competition | null>(null);
+  const [state, setState] = useState<MyState | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSavingCommitment, setIsSavingCommitment] = useState(false);
-  const [commitmentRounds, setCommitmentRounds] = useState<number>(16);
   const [commitmentInput, setCommitmentInput] = useState<string>('16');
   const [commitmentError, setCommitmentError] = useState<string>('');
-  const [logDate, setLogDate] = useState(new Date().toISOString().split('T')[0]);
-  const [formData, setFormData] = useState({
-    chanting_rounds: 0,
-    reading_minutes: 0,
-    hearing_minutes: 0
-  });
-  const [pointsResult, setPointsResult] = useState<CalculationResult | null>(null);
-  const [appSettings, setAppSettings] = useState<any>(null);
-  const [userProfile, setUserProfile] = useState<any>(null);
-  const [alreadyLoggedDates, setAlreadyLoggedDates] = useState<string[]>([]);
-  const [isFetching, setIsFetching] = useState(false);
+  const [logDate, setLogDate] = useState('');
+  const [rounds, setRounds] = useState<number>(0);
+  const [result, setResult] = useState<LogResult | null>(null);
 
-  // Generate list of unfulfilled dates (past/present only, not already logged)
-  const unfulfilledDates = React.useMemo(() => {
-    if (!appSettings?.challenge_start_date) return [];
+  const cfg = mergeConfig(competition?.config);
 
-    const dates: { value: string; label: string }[] = [];
-    const [sYear, sMonth, sDay] = appSettings.challenge_start_date.split('-').map(Number);
-    const start = new Date(sYear, sMonth - 1, sDay);
-    start.setHours(0, 0, 0, 0);
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // Scan from start date to today
-    let current = new Date(start);
-    while (current <= today) {
-      const yStr = current.getFullYear();
-      const mStr = String(current.getMonth() + 1).padStart(2, '0');
-      const dStr = String(current.getDate()).padStart(2, '0');
-      const dateStr = `${yStr}-${mStr}-${dStr}`;
-
-      if (!alreadyLoggedDates.includes(dateStr)) {
-        dates.push({
-          value: dateStr,
-          label: current.toLocaleDateString('en-US', {
-            weekday: 'short',
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric'
-          })
-        });
-      }
-      current.setDate(current.getDate() + 1);
-    }
-
-    // Sort descending so most recent unlogged date is at the top
-    return dates.reverse();
-  }, [appSettings, alreadyLoggedDates]);
-
-  // Reactively sync selected logDate with the first available unfulfilled date
-  React.useEffect(() => {
-    if (unfulfilledDates.length > 0 && !unfulfilledDates.some(d => d.value === logDate)) {
-      setLogDate(unfulfilledDates[0].value);
-    }
-  }, [unfulfilledDates, logDate]);
-
-  useEffect(() => {
-    if (isOpen && user) {
-      setAlreadyLoggedDates([]);
-      fetchData();
-    }
-  }, [isOpen, user]);
+  const loadCounterRounds = async (compId: string, date: string, fallback: number) => {
+    // rounds counted by the Japa counter for that day (own rows, read-only)
+    const { data } = await supabase
+      .from('user_chanting_logs')
+      .select('rounds_chanted')
+      .eq('competition_id', compId)
+      .eq('log_date', date)
+      .maybeSingle();
+    return data?.rounds_chanted && data.rounds_chanted > 0 ? data.rounds_chanted : fallback;
+  };
 
   const fetchData = async () => {
-    setIsFetching(true);
+    setStep('loading');
+    setResult(null);
     try {
-      // Fetch settings
-      const { data: settings } = await supabase.from('app_settings').select('*');
-      const settingsMap = settings?.reduce((acc: any, curr: any) => {
-        acc[curr.key] = curr.value;
-        return acc;
-      }, {});
-      setAppSettings(settingsMap);
+      const [{ data: active, error: aErr }, { data: mine, error: mErr }] = await Promise.all([
+        supabase.rpc('get_active_competition'),
+        supabase.rpc('get_my_state'),
+      ]);
+      if (aErr || mErr) throw aErr || mErr;
 
-      // Fetch user profile for targets and current streak
-      const { data: profile } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', user?.id)
-        .single();
-      setUserProfile(profile);
-      const targetChant = profile?.target_chanting || 16;
-      setCommitmentRounds(targetChant);
-      setCommitmentInput(String(targetChant));
+      const payload = active as ActiveCompetitionPayload;
+      const comp = payload.competition;
+      setCompetition(comp);
 
-      // Fetch existing logs to find already completed dates
-      const { data: existingLogs } = await supabase
-        .from('activity_logs')
-        .select('log_date')
-        .eq('user_id', user?.id);
-
-      const loggedDates = existingLogs?.map(l => l.log_date) || [];
-      setAlreadyLoggedDates(loggedDates);
-
-      // If user has never logged before, show the Commitment Setup dialogue box first!
-      if (loggedDates.length === 0) {
-        setStep('commitment');
-      } else {
-        setStep('form');
+      if (!comp) {
+        setBlockedMsg(
+          payload.next ? (
+            <>
+              <p className="text-lg font-black text-slate-800 mb-1">No competition running</p>
+              <p className="text-sm text-slate-500">Next competition starts on <strong>{formatLong(payload.next.start_date)}</strong>: {payload.next.title}.</p>
+            </>
+          ) : (
+            <>
+              <p className="text-lg font-black text-slate-800 mb-1">No competition running</p>
+              <p className="text-sm text-slate-500">There is nothing to log right now. Check back when the next competition is announced.</p>
+            </>
+          )
+        );
+        setStep('blocked');
+        return;
+      }
+      if (!includesChanting(comp.type)) {
+        setBlockedMsg(
+          <>
+            <p className="text-lg font-black text-slate-800 mb-1">Chanting is not part of this competition</p>
+            <p className="text-sm text-slate-500 mb-4">Your reading time is tracked automatically in the Books section.</p>
+            <Link href="/books" onClick={onClose} className="inline-block px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-wider">Open Books</Link>
+          </>
+        );
+        setStep('blocked');
+        return;
       }
 
-      // Default to the first unlogged past date going backward starting from today
-      const today = new Date();
-      let checkDate = new Date(today);
-      let checkDateStr = checkDate.toISOString().split('T')[0];
-      while (loggedDates.includes(checkDateStr)) {
-        checkDate.setDate(checkDate.getDate() - 1);
-        checkDateStr = checkDate.toISOString().split('T')[0];
-      }
-      setLogDate(checkDateStr);
-
-      // Fetch in-app chanting rounds for the selected date if present
-      let defaultChantingRounds = targetChant;
-      const { data: chantLog } = await supabase
-        .from('user_chanting_logs')
-        .select('rounds_chanted')
-        .eq('user_id', user?.id)
-        .eq('log_date', checkDateStr)
-        .maybeSingle();
-
-      if (chantLog?.rounds_chanted && chantLog.rounds_chanted > 0) {
-        defaultChantingRounds = chantLog.rounds_chanted;
+      const st = mine as MyState;
+      setState(st);
+      const first = st.loggable_dates?.[0];
+      if (!first) {
+        setBlockedMsg(
+          <>
+            <p className="text-lg font-black text-slate-800 mb-1">🎉 All days logged!</p>
+            <p className="text-sm text-slate-500">
+              {istToday() > comp.end_date
+                ? `The competition ended on ${formatLong(comp.end_date)}.`
+                : istToday() < comp.start_date
+                  ? `The competition starts on ${formatLong(comp.start_date)}.`
+                  : 'You have logged every day you can still submit. Missed days older than the late-log window cannot be added.'}
+            </p>
+          </>
+        );
+        setStep('blocked');
+        return;
       }
 
-      // Default form data to personal targets or recorded in-app chanting
-      setFormData({
-        chanting_rounds: defaultChantingRounds,
-        reading_minutes: profile?.target_reading || 0,
-        hearing_minutes: 0
-      });
+      setLogDate(first);
+      const dflt = st.commitment ?? st.default_commitment ?? 16;
+      setCommitmentInput(String(dflt));
+      const counter = first === istToday() ? st.counter_today : await loadCounterRounds(comp.id, first, 0);
+      setRounds(counter > 0 ? counter : st.commitment ?? 0);
+      setStep(st.commitment ? 'form' : 'commitment');
     } catch (e) {
-      console.error("Error fetching modal data:", e);
-    } finally {
-      setIsFetching(false);
+      setBlockedMsg(<p className="text-sm font-bold text-red-600">{friendlyError(e)}</p>);
+      setStep('blocked');
     }
   };
 
+  useEffect(() => {
+    if (isOpen && user) fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, user]);
+
   const handleConfirmCommitment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
-
-    const parsedRounds = parseInt(commitmentInput.trim(), 10);
-    if (!commitmentInput.trim() || isNaN(parsedRounds) || parsedRounds <= 0) {
-      setCommitmentError('Please enter a valid daily commitment (at least 1 round).');
+    const parsed = parseInt(commitmentInput.trim(), 10);
+    if (!commitmentInput.trim() || isNaN(parsed) || parsed < 1 || parsed > 108) {
+      setCommitmentError('Please enter a daily commitment between 1 and 108 rounds.');
       return;
     }
-
     setCommitmentError('');
     setIsSavingCommitment(true);
     try {
-      const { error } = await supabase
-        .from('users')
-        .update({ target_chanting: parsedRounds })
-        .eq('id', user.id);
-
+      const { error } = await supabase.rpc('set_commitment', { p_rounds: parsed });
       if (error) throw error;
-
-      setUserProfile((prev: any) => ({ ...prev, target_chanting: parsedRounds }));
-      setCommitmentRounds(parsedRounds);
+      setState((s) => (s ? { ...s, commitment: parsed } : s));
+      if (rounds === 0) setRounds(parsed);
       setStep('form');
-      toast.success(`Daily Chanting Commitment of ${parsedRounds} rounds saved!`);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to save commitment');
+      toast.success(`Daily commitment of ${parsed} rounds saved!`);
+    } catch (err) {
+      toast.error(friendlyError(err));
     } finally {
       setIsSavingCommitment(false);
     }
   };
 
-  // Sync chanting rounds pre-fill whenever selected logDate changes
-  useEffect(() => {
-    if (!user?.id || !logDate) return;
-    const fetchChantingForDate = async () => {
-      const { data: chantLog } = await supabase
-        .from('user_chanting_logs')
-        .select('rounds_chanted')
-        .eq('user_id', user.id)
-        .eq('log_date', logDate)
-        .maybeSingle();
-
-      if (chantLog?.rounds_chanted && chantLog.rounds_chanted > 0) {
-        setFormData(prev => ({
-          ...prev,
-          chanting_rounds: chantLog.rounds_chanted
-        }));
-      }
-    };
-    fetchChantingForDate();
-  }, [logDate, user?.id, supabase]);
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: Math.max(0, parseInt(value) || 0) }));
+  const handleDateChange = async (date: string) => {
+    setLogDate(date);
+    if (!competition) return;
+    const counter = date === istToday() ? state?.counter_today ?? 0 : await loadCounterRounds(competition.id, date, 0);
+    setRounds(counter > 0 ? counter : state?.commitment ?? 0);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !appSettings || !userProfile) return;
-
-    const selected = new Date(logDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const diffDays = Math.floor((today.getTime() - selected.getTime()) / (1000 * 60 * 60 * 24));
-
-    const lateAllowed = parseInt(appSettings.late_log_allowed_days || '1');
-    if (diffDays > lateAllowed) {
-      toast.error(`Late submissions are only allowed for yesterday. Contact admin for older logs.`);
-      return;
-    }
-
-    if (formData.chanting_rounds === 0) {
-      if (!confirm("Logging 0 rounds for chanting today? Confirm submission?")) return;
-    }
+    if (!competition || !logDate) return;
+    if (rounds === 0 && !confirm('Log 0 rounds for this day? Confirm submission?')) return;
 
     setIsLoading(true);
     try {
-      // 1. Update Streak
-      const streakUpdate = updateStreak(
-        userProfile.last_log_date,
-        logDate,
-        userProfile.streak_count,
-        userProfile.freeze_credits
-      );
-
-      if (streakUpdate.error) {
-        toast.error(streakUpdate.error);
-        setIsLoading(false);
-        return;
-      }
-
-      if (streakUpdate.freeze_used) {
-        toast("One Streak Shield used! 🛡️", { icon: '🛡️' });
-      } else if (streakUpdate.streak_broken) {
-        toast("Your streak was broken. Starting fresh 🔥", { icon: '🔥' });
-      }
-
-      // 2. Calculate Points
-      const result = calculatePoints({
-        ...formData,
-        target_chanting: userProfile.target_chanting,
-        target_reading: userProfile.target_reading,
-        target_hearing: 0,
-        streak_count: streakUpdate.new_streak,
-        points_per_chanting: parseInt(appSettings.points_per_chanting_round || '2'),
-        points_per_reading: parseInt(appSettings.points_per_reading_minute || '1'),
-        points_per_hearing: 0,
-        streak_bonus_multiplier: parseFloat(appSettings.streak_bonus_multiplier || '0.1')
-      });
-
-      setPointsResult(result);
-
-      // 3. Save to DB (Uses safe insert/update routing to perfectly respect RLS policies and constraints)
-      const logExists = alreadyLoggedDates.includes(logDate);
-      let logError;
-
-      if (logExists) {
-        const { error } = await supabase
-          .from('activity_logs')
-          .update({
-            ...formData,
-            points_earned: result.total_points,
-            is_late_submission: diffDays > 0
-          })
-          .eq('user_id', user.id)
-          .eq('log_date', logDate);
-        logError = error;
-      } else {
-        const { error } = await supabase
-          .from('activity_logs')
-          .insert({
-            user_id: user.id,
-            log_date: logDate,
-            ...formData,
-            points_earned: result.total_points,
-            is_late_submission: diffDays > 0
-          });
-        logError = error;
-      }
-
-      if (logError) throw logError;
-
-      const newTotalPoints = (userProfile.total_points || 0) + result.total_points;
-      const { error: userError } = await supabase.from('users').update({
-        total_points: newTotalPoints,
-        streak_count: streakUpdate.new_streak,
-        best_streak: Math.max(userProfile.best_streak || 0, streakUpdate.new_streak),
-        last_log_date: logDate,
-        freeze_credits: streakUpdate.new_freeze_credits
-      }).eq('id', user.id);
-
-      if (userError) throw userError;
-
-      // 4. Check Awards
-      const { data: logAgg } = await supabase
-        .from('activity_logs')
-        .select('reading_minutes, submitted_at')
-        .eq('user_id', user.id);
-
-      const cumulativeReading = logAgg?.reduce((sum, log) => sum + (log.reading_minutes || 0), 0) || 0;
-      const earlyMorningCount = logAgg?.filter(log => {
-        const time = new Date(log.submitted_at).getHours();
-        return time < 6;
-      }).length || 0;
-
-      const newAwards = checkAwardUnlocks({
-        total_points: newTotalPoints,
-        streak_count: streakUpdate.new_streak,
-        cumulative_reading_minutes: cumulativeReading,
-        early_morning_logs_count: earlyMorningCount,
-        is_first_log: !userProfile.last_log_date
-      });
-
-      if (newAwards.length > 0) {
-        confetti({
-          particleCount: 150,
-          spread: 70,
-          origin: { y: 0.6 }
-        });
-      }
-
+      const { data, error } = await supabase.rpc('log_chanting', { p_date: logDate, p_rounds: rounds });
+      if (error) throw error;
+      const r = data as LogResult;
+      setResult(r);
       setStep('summary');
       onSuccess();
-      toast.success(`Activity logged! 🙏 You earned ${result.total_points} points!`);
-    } catch (error: any) {
-      toast.error(error.message || "Failed to log activity");
+      toast.success(`Activity logged! 🙏 You earned ${r.points} points!`);
+    } catch (err) {
+      toast.error(friendlyError(err));
     } finally {
       setIsLoading(false);
     }
   };
 
   if (!isOpen) return null;
+
+  const dates = state?.loggable_dates || [];
+  const today = istToday();
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center p-4">
@@ -377,13 +225,24 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-        className="relative w-full max-w-lg bg-white rounded-t-[2rem] md:rounded-[2.5rem] shadow-2xl overflow-hidden"
+        className="relative w-full max-w-lg bg-white rounded-t-[2rem] md:rounded-[2.5rem] shadow-2xl overflow-hidden max-h-[92vh] overflow-y-auto"
       >
-        <button onClick={onClose} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 transition-colors">
+        <button onClick={onClose} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 transition-colors z-10">
           <X size={24} />
         </button>
 
-        {step === 'commitment' ? (
+        {step === 'loading' ? (
+          <div className="py-24 text-center font-bold text-slate-400 flex flex-col items-center justify-center gap-3">
+            <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+            <span>Checking the competition...</span>
+          </div>
+        ) : step === 'blocked' ? (
+          <div className="p-10 text-center">
+            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center text-3xl mx-auto mb-5">🪷</div>
+            {blockedMsg}
+            <button onClick={onClose} className="mt-6 w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-sm cursor-pointer">Close</button>
+          </div>
+        ) : step === 'commitment' ? (
           <div className="p-8 md:p-10 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-12 h-12 bg-amber-100 dark:bg-amber-950/80 rounded-2xl flex items-center justify-center text-amber-600 dark:text-amber-400 text-xl shadow-xs">
@@ -393,9 +252,9 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
                 <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100">Set Daily Commitment</h2>
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/80 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-700/60">
-                    ⚡ One-Time Process
+                    ⚡ Once per competition
                   </span>
-                  <span className="text-slate-500 dark:text-slate-400 text-xs font-bold">• First-Time Setup</span>
+                  <span className="text-slate-500 dark:text-slate-400 text-xs font-bold">• {competition?.title}</span>
                 </div>
               </div>
             </div>
@@ -409,19 +268,19 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
                   </span>
                 </div>
                 <p className="text-xs font-semibold leading-relaxed text-slate-700 dark:text-slate-300">
-                  Your daily leaderboard score will be assigned based on your target commitment:
+                  Your daily score is based on your commitment:
                 </p>
                 <div className="bg-slate-900 dark:bg-slate-950 p-3.5 rounded-xl border border-amber-500/40 text-center font-mono font-black text-amber-300 dark:text-amber-400 text-sm shadow-md tracking-tight">
-                  Base Points = (Rounds Chanted / Commitment) × 10
+                  Base Points = (Rounds Chanted / Commitment) × {cfg.chanting_points_at_commitment}
                 </div>
                 <ul className="text-[11px] font-bold text-slate-600 dark:text-slate-300 space-y-1.5 pl-1">
                   <li className="flex items-start gap-1.5">
                     <span className="text-amber-500 font-black">✓</span>
-                    <span>Completing 100% of your target ({commitmentInput.trim() || '16'} rounds) = 10 Base Points.</span>
+                    <span>Completing 100% of your commitment ({commitmentInput.trim() || '16'} rounds) = {cfg.chanting_points_at_commitment} base points.</span>
                   </li>
                   <li className="flex items-start gap-1.5">
                     <span className="text-amber-600 dark:text-amber-400 font-black">🔒</span>
-                    <span><strong>Notice:</strong> This is a <u>one-time setup</u>. Once saved, your target commitment cannot be changed from the log window.</span>
+                    <span><strong>Notice:</strong> your commitment can only be <u>raised</u> later (from your Profile), never lowered.</span>
                   </li>
                 </ul>
               </div>
@@ -436,8 +295,7 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
                   pattern="[0-9]*"
                   value={commitmentInput}
                   onChange={(e) => {
-                    const val = e.target.value.replace(/[^0-9]/g, '');
-                    setCommitmentInput(val);
+                    setCommitmentInput(e.target.value.replace(/[^0-9]/g, ''));
                     if (commitmentError) setCommitmentError('');
                   }}
                   className={`w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border-2 outline-none font-black text-2xl text-slate-800 dark:text-slate-100 transition-all text-center ${
@@ -451,7 +309,7 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
                   </p>
                 ) : (
                   <p className="mt-1.5 text-[11px] text-center font-medium text-slate-500 dark:text-slate-400">
-                    Clear the field and enter your daily target rounds (minimum 1).
+                    Enter your daily target rounds (1 – 108).
                   </p>
                 )}
               </div>
@@ -475,83 +333,64 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
               </div>
               <div>
                 <h2 className="text-2xl font-black text-slate-800">Log Activity</h2>
-                <p className="text-slate-500 text-sm">Update your progress for the day</p>
+                <p className="text-slate-500 text-sm">{competition?.title}</p>
               </div>
             </div>
 
-            {isFetching ? (
-              <div className="py-20 text-center font-bold text-slate-400 flex flex-col items-center justify-center gap-3">
-                <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-                <span>Checking your commitments...</span>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Log Date</label>
-                  {unfulfilledDates.length > 0 ? (
-                    <div className="relative">
-                      <select
-                        value={logDate}
-                        onChange={(e) => setLogDate(e.target.value)}
-                        className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-indigo-500 focus:bg-white outline-none font-bold text-slate-700 cursor-pointer appearance-none pr-10 transition-all"
-                      >
-                        {unfulfilledDates.map((d) => (
-                          <option key={d.value} value={d.value} className="font-bold">
-                            {d.label} {d.value === new Date().toISOString().split('T')[0] ? ' (Today) 🎯' : ''}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-indigo-500 font-bold">
-                        ▼
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="p-6 bg-emerald-50 border-2 border-emerald-100 text-emerald-700 rounded-3xl text-center font-bold">
-                      <p className="text-sm mb-1">🎉 All Days Logged!</p>
-                      <p className="text-[10px] uppercase tracking-wider opacity-85">You have successfully logged all available days of this challenge.</p>
-                    </div>
-                  )}
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Log Date</label>
+                <div className="relative">
+                  <select
+                    value={logDate}
+                    onChange={(e) => handleDateChange(e.target.value)}
+                    className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-indigo-500 focus:bg-white outline-none font-bold text-slate-700 cursor-pointer appearance-none pr-10 transition-all"
+                  >
+                    {dates.map((d) => (
+                      <option key={d} value={d} className="font-bold">
+                        {formatShort(d)}{d === today ? ' (Today) 🎯' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-indigo-500 font-bold">▼</div>
                 </div>
+              </div>
 
-                {unfulfilledDates.length > 0 && (
-                  <>
-                    <div>
-                      <div className="flex justify-between items-end mb-2">
-                        <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                          <span>📿</span> Chanting Rounds
-                        </label>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
-                          Commitment: {userProfile?.target_chanting || commitmentRounds || 16} Rounds
-                        </span>
-                      </div>
-                      <input
-                        type="number"
-                        name="chanting_rounds"
-                        min="0"
-                        value={formData.chanting_rounds}
-                        onChange={handleInputChange}
-                        className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-indigo-500 outline-none font-bold text-lg text-slate-800"
-                        placeholder="Enter rounds completed"
-                      />
-                    </div>
+              <div>
+                <div className="flex justify-between items-end mb-2">
+                  <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                    <span>📿</span> Chanting Rounds
+                  </label>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
+                    Commitment: {state?.commitment} Rounds
+                  </span>
+                </div>
+                <input
+                  type="number"
+                  name="chanting_rounds"
+                  min="0"
+                  max="300"
+                  value={rounds}
+                  onChange={(e) => setRounds(Math.min(300, Math.max(0, parseInt(e.target.value) || 0)))}
+                  className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-indigo-500 outline-none font-bold text-lg text-slate-800"
+                  placeholder="Enter rounds completed"
+                />
+              </div>
 
-                    <button
-                      type="submit"
-                      disabled={isLoading}
-                      className="w-full bg-indigo-600 text-white py-5 rounded-[1.5rem] font-black text-lg hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 flex items-center justify-center gap-3 mt-4 disabled:opacity-50 cursor-pointer"
-                    >
-                      {isLoading ? 'Saving...' : (
-                        <>Submit Daily Log <ChevronRight size={20} /></>
-                      )}
-                    </button>
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-indigo-600 text-white py-5 rounded-[1.5rem] font-black text-lg hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 flex items-center justify-center gap-3 mt-4 disabled:opacity-50 cursor-pointer"
+              >
+                {isLoading ? 'Saving...' : (<>Submit Daily Log <ChevronRight size={20} /></>)}
+              </button>
 
-                    <p className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                      Points = Base Points × Streak Count (Streak 1 = 1x, Streak 2 = 2x, etc.) 🔥
-                    </p>
-                  </>
-                )}
-              </form>
-            )}
+              <p className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                {cfg.streak_multiplier_enabled
+                  ? `Points = Base Points × Streak (max ${cfg.streak_multiplier_cap}×) 🔥`
+                  : 'Points = Base Points'}
+              </p>
+            </form>
           </div>
         ) : (
           <div className="p-10 text-center">
@@ -565,22 +404,25 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
               <div className="grid grid-cols-2 gap-4">
                 <div className="p-4 bg-white rounded-2xl shadow-sm">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Base Points</p>
-                  <p className="text-2xl font-black text-slate-800">+{pointsResult?.base_points}</p>
+                  <p className="text-2xl font-black text-slate-800">+{result?.base ?? 0}</p>
                 </div>
                 <div className="p-4 bg-white rounded-2xl shadow-sm">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Streak Bonus</p>
-                  <p className="text-2xl font-black text-orange-500">+{pointsResult?.streak_bonus}</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    Streak ×{result?.multiplier ?? 1}
+                  </p>
+                  <p className="text-2xl font-black text-orange-500">+{Math.max(0, (result?.points ?? 0) - (result?.base ?? 0))}</p>
                 </div>
               </div>
               <div className="mt-4 p-4 bg-indigo-600 rounded-2xl text-white">
                 <p className="text-[10px] font-bold opacity-60 uppercase tracking-wider mb-1">Total Earned</p>
-                <p className="text-3xl font-black">{pointsResult?.total_points} pts</p>
+                <p className="text-3xl font-black">{result?.points ?? 0} pts</p>
+                <p className="text-[10px] font-bold opacity-70 mt-1">🔥 {result?.streak ?? 0}-day streak</p>
               </div>
             </div>
 
             <button
               onClick={onClose}
-              className="w-full bg-slate-900 text-white py-5 rounded-[1.5rem] font-black text-lg hover:bg-slate-800 transition-all"
+              className="w-full bg-slate-900 text-white py-5 rounded-[1.5rem] font-black text-lg hover:bg-slate-800 transition-all cursor-pointer"
             >
               Back to Leaderboard
             </button>

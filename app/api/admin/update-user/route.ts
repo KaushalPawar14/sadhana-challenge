@@ -1,78 +1,58 @@
-import { createServerClient } from '@supabase/ssr';
-import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { createSupabaseAdmin, getCaller } from '@/lib/supabase/server';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// HOD-only. Whitelisted profile columns only (no points / streak / onboarding flags / counters).
+// Per-competition commitment goes through the HOD RPC so it is audited by the database rules.
+const admin = createSupabaseAdmin();
 
 export async function POST(request: Request) {
-  try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient(
-      supabaseUrl!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name) {
-            return cookieStore.get(name)?.value;
-          },
-          set(name, value, options) {
-            cookieStore.set({ name, value, ...options });
-          },
-          remove(name, options) {
-            cookieStore.delete({ name, ...options });
-          },
-        },
-      }
-    );
+  const { user, role, supabase } = await getCaller();
+  if (!user || role !== 'HOD') return NextResponse.json({ error: 'Forbidden: HOD only' }, { status: 403 });
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !user.email) {
-      return NextResponse.json({ error: 'Unauthorized: Session missing' }, { status: 401 });
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body.userId !== 'string') return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
+  const { userId } = body;
+
+  if (body.commitment) {
+    const { competitionId, rounds } = body.commitment;
+    const r = Number(rounds);
+    if (!competitionId || !Number.isInteger(r) || r < 1 || r > 108) {
+      return NextResponse.json({ error: 'Commitment must be a whole number between 1 and 108.' }, { status: 400 });
     }
-
-    // Verify admin status
-    const { data: isAdmin } = await supabase.rpc('is_admin', {
-      user_email: user.email
-    });
-
-    if (!isAdmin) {
-      return NextResponse.json({ error: 'Forbidden: Admins only' }, { status: 403 });
-    }
-
-    const body = await request.json();
-    const { userId, ...updates } = body;
-
-    if (!userId) {
-      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
-    }
-
-    // Use admin client with Service Role Key if present to bypass RLS, otherwise fallback to server client
-    const targetClient = supabaseServiceKey
-      ? createClient(supabaseUrl!, supabaseServiceKey)
-      : supabase;
-
-    const { data, error } = await targetClient
-      .from('users')
-      .update(updates)
-      .eq('id', userId)
-      .select()
-      .single();
-
-    if (error) {
-      console.error("Admin user update error:", error);
-      if (error.code === 'PGRST204' || error.message?.includes('gender')) {
-        return NextResponse.json({
-          error: "Database schema update required! The 'gender' column does not exist in your Supabase 'users' table yet. Please run this SQL in your Supabase SQL Editor:\n\nALTER TABLE users ADD COLUMN IF NOT EXISTS gender TEXT CHECK (gender IN ('M', 'F'));"
-        }, { status: 400 });
-      }
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    return NextResponse.json({ success: true, user: data });
-  } catch (err: any) {
-    console.error("Server error during user update:", err);
-    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 });
+    const { error } = await supabase.rpc('hod_set_commitment', { p_comp: competitionId, p_user: userId, p_rounds: r });
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ success: true });
   }
+
+  const updates: Record<string, unknown> = {};
+  if ('full_name' in body) {
+    const v = String(body.full_name ?? '').trim();
+    if (!v || v.length > 120) return NextResponse.json({ error: 'Invalid name' }, { status: 400 });
+    updates.full_name = v;
+  }
+  if ('mobile' in body) {
+    const v = String(body.mobile ?? '').trim();
+    if (!/^\d{10}$/.test(v)) return NextResponse.json({ error: 'Mobile must be exactly 10 digits' }, { status: 400 });
+    updates.mobile = v;
+  }
+  if ('gender' in body) {
+    if (!['M', 'F'].includes(body.gender)) return NextResponse.json({ error: 'Gender must be M or F' }, { status: 400 });
+    updates.gender = body.gender;
+  }
+  if ('department' in body) {
+    const v = String(body.department ?? '').trim();
+    if (!v || v.length > 120) return NextResponse.json({ error: 'Invalid department' }, { status: 400 });
+    updates.department = v;
+  }
+  if ('age' in body) {
+    const n = Number(body.age);
+    if (!Number.isInteger(n) || n < 10 || n > 100) return NextResponse.json({ error: 'Age must be between 10 and 100' }, { status: 400 });
+    updates.age = n;
+  }
+  if (Object.keys(updates).length === 0) return NextResponse.json({ error: 'No editable fields supplied' }, { status: 400 });
+
+  const { data, error } = await admin.from('users').update(updates).eq('id', userId)
+    .select('id, full_name, mobile, gender, department, age').single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ success: true, user: data });
 }

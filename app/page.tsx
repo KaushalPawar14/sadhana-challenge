@@ -67,7 +67,7 @@ export default function LoginPage() {
           </button>
 
           <p className="mt-8 text-xs text-white/40 uppercase tracking-[0.2em]">
-            26-Day Spiritual Challenge
+            Sadhana Competitions
           </p>
         </div>
       </motion.div>

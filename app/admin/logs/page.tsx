@@ -1,179 +1,151 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import { Trash2, Search, Filter, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { Search, Filter, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { supabase } from '@/lib/supabaseClient';
+import { friendlyError } from '@/lib/errors';
+import { CompetitionSelect, pickDefaultCompetition, useCompetitions } from '../_shared';
+
+// View-only for every admin role: logs are the source data of the points ledger, so they are never
+// edited or deleted from the UI (corrections go through bonus / adjustment points by the HOD).
+
+interface LogRow {
+  id: string; user_id: string; log_date: string; chanting_rounds: number; points_earned: number;
+  is_late_submission: boolean; source: string | null; submitted_at: string; users: { full_name: string | null } | null;
+}
+interface LedgerRow {
+  id: string; user_id: string; source: string; points: number; activity_date: string; note: string | null;
+  created_at: string; users: { full_name: string | null } | null;
+}
+
+const SOURCE_LABEL: Record<string, string> = {
+  chanting: '📿 Chanting', reading: '📖 Reading', quiz_bonus: '🧠 Quiz bonus', manual_bonus: '🌟 HOD bonus', adjustment: '⚖️ Adjustment',
+};
 
 export default function AdminLogs() {
-  const [logs, setLogs] = useState<any[]>([]);
+  const { list: competitions, loading: compLoading } = useCompetitions();
+  const [compId, setCompId] = useState('');
+  const [tab, setTab] = useState<'logs' | 'ledger'>('logs');
+  const [logs, setLogs] = useState<LogRow[]>([]);
+  const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [search, setSearch] = useState('');
+  const [onlyLate, setOnlyLate] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [filterLate, setFilterLate] = useState(false);
 
   useEffect(() => {
-    fetchLogs();
-  }, []);
+    if (!compId && competitions.length) setCompId(pickDefaultCompetition(competitions)?.id || '');
+  }, [competitions, compId]);
 
-  const fetchLogs = async () => {
+  useEffect(() => {
+    if (!compId) { setIsLoading(false); return; }
+    let cancelled = false;
     setIsLoading(true);
-    const { data } = await supabase
-      .from('activity_logs')
-      .select('*, users(full_name)')
-      .order('submitted_at', { ascending: false });
-    setLogs(data || []);
-    setIsLoading(false);
-  };
+    (async () => {
+      const [l, p] = await Promise.all([
+        supabase.from('activity_logs')
+          .select('id,user_id,log_date,chanting_rounds,points_earned,is_late_submission,source,submitted_at,users(full_name)')
+          .eq('competition_id', compId).order('submitted_at', { ascending: false }).limit(1000),
+        supabase.from('points_ledger')
+          .select('id,user_id,source,points,activity_date,note,created_at,users(full_name)')
+          .eq('competition_id', compId).order('created_at', { ascending: false }).limit(1000),
+      ]);
+      if (cancelled) return;
+      if (l.error) toast.error(friendlyError(l.error));
+      if (p.error) toast.error(friendlyError(p.error));
+      setLogs((l.data as any as LogRow[]) || []);
+      setLedger((p.data as any as LedgerRow[]) || []);
+      setIsLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [compId]);
 
-  const handleDeleteLog = async (log: any) => {
-    if (!confirm(`Delete log for ${log.users.full_name} on ${log.log_date}? This will NOT auto-update their total points in this version, manual correction in Users tab may be needed.`)) return;
-    
-    const { error } = await supabase.from('activity_logs').delete().eq('id', log.id);
-    if (error) toast.error("Failed to delete log");
-    else {
-      toast.success("Log deleted");
-      fetchLogs();
-    }
-  };
+  const q = search.toLowerCase();
+  const filteredLogs = logs.filter((l) => (!q || l.users?.full_name?.toLowerCase().includes(q)) && (!onlyLate || l.is_late_submission));
+  const filteredLedger = ledger.filter((l) => !q || l.users?.full_name?.toLowerCase().includes(q));
 
-  const filteredLogs = logs.filter(l => {
-    const matchesSearch = l.users?.full_name?.toLowerCase().includes(search.toLowerCase());
-    const matchesLate = filterLate ? l.is_late_submission : true;
-    return matchesSearch && matchesLate;
-  });
+  const tabCls = (t: string) => `px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition-all ${tab === t ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 hover:bg-slate-100'}`;
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6 sm:space-y-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-black text-slate-900">Activity Logs</h2>
-          <p className="text-slate-500 font-bold">Global stream of all spiritual submissions</p>
+          <h2 className="text-2xl sm:text-3xl font-black text-slate-900">Activity Logs</h2>
+          <p className="text-slate-500 font-bold text-sm">Every submission and every point entry (latest 1000 per list)</p>
         </div>
+        {!compLoading && <CompetitionSelect list={competitions} value={compId} onChange={setCompId} />}
       </div>
 
-      <div className="flex flex-col md:flex-row gap-4">
+      <div className="flex flex-col md:flex-row gap-3">
         <div className="flex-1 relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-          <input 
-            type="text" 
-            placeholder="Search by student name..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-12 pr-4 py-4 bg-white rounded-2xl border border-slate-100 shadow-sm focus:border-indigo-500 outline-none transition-all font-bold"
-          />
+          <input type="text" placeholder="Search by student name…" value={search} onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-12 pr-4 py-3.5 bg-white rounded-2xl border border-slate-100 shadow-sm focus:border-indigo-500 outline-none font-bold" />
         </div>
-        <button 
-          onClick={() => setFilterLate(!filterLate)}
-          className={`flex items-center gap-2 px-6 py-4 rounded-2xl font-black text-sm transition-all shadow-sm ${filterLate ? 'bg-amber-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
-        >
-          <Filter size={18} /> {filterLate ? 'Showing Late Only' : 'Filter Late'}
-        </button>
+        {tab === 'logs' && (
+          <button onClick={() => setOnlyLate(!onlyLate)}
+            className={`flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl font-black text-sm shadow-sm cursor-pointer ${onlyLate ? 'bg-amber-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>
+            <Filter size={18} /> {onlyLate ? 'Showing late only' : 'Filter late'}
+          </button>
+        )}
       </div>
 
-      {/* Logs Table Container */}
-      <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl overflow-hidden">
-        
-        {/* Desktop Table View */}
-        <div className="overflow-x-auto hidden md:block">
-          <table className="w-full text-left">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="p-6 font-black text-slate-400 uppercase text-[10px] tracking-widest">Student</th>
-                <th className="p-6 font-black text-slate-400 uppercase text-[10px] tracking-widest">Log Date</th>
-                <th className="p-6 font-black text-slate-400 uppercase text-[10px] tracking-widest">Details</th>
-                <th className="p-6 font-black text-slate-400 uppercase text-[10px] tracking-widest">Points</th>
-                <th className="p-6 font-black text-slate-400 uppercase text-[10px] tracking-widest">Status</th>
-                <th className="p-6 font-black text-slate-400 uppercase text-[10px] tracking-widest text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {isLoading ? (
-                Array(5).fill(0).map((_, i) => (
-                  <tr key={i} className="animate-pulse">
-                    <td colSpan={6} className="p-10">
-                      <div className="h-4 bg-slate-100 rounded w-full" />
+      <div className="inline-flex gap-1 bg-white border border-slate-100 rounded-2xl p-1 shadow-sm">
+        <button className={tabCls('logs')} onClick={() => setTab('logs')}>Daily logs ({filteredLogs.length})</button>
+        <button className={tabCls('ledger')} onClick={() => setTab('ledger')}>Points ledger ({filteredLedger.length})</button>
+      </div>
+
+      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-xl overflow-hidden">
+        <div className="overflow-x-auto">
+          {tab === 'logs' ? (
+            <table className="w-full text-left min-w-[640px]">
+              <thead className="bg-slate-50">
+                <tr>{['Student', 'Log date', 'Rounds', 'Points', 'Status', 'Source'].map((h) => <th key={h} className="p-4 sm:p-5 font-black text-slate-400 uppercase text-[10px] tracking-widest">{h}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {isLoading ? (
+                  <tr><td colSpan={6} className="p-10 text-center text-slate-400 font-bold">Loading…</td></tr>
+                ) : filteredLogs.length === 0 ? (
+                  <tr><td colSpan={6} className="p-10 text-center text-slate-400 font-bold">No logs found.</td></tr>
+                ) : filteredLogs.map((l) => (
+                  <tr key={l.id} className="hover:bg-slate-50/50">
+                    <td className="p-4 sm:p-5 font-bold text-slate-900">{l.users?.full_name}</td>
+                    <td className="p-4 sm:p-5 font-bold text-slate-600">{l.log_date}</td>
+                    <td className="p-4 sm:p-5 text-xs font-bold text-slate-500">📿 {l.chanting_rounds}</td>
+                    <td className="p-4 sm:p-5 font-black text-indigo-600">+{l.points_earned}</td>
+                    <td className="p-4 sm:p-5">
+                      {l.is_late_submission
+                        ? <span className="flex items-center gap-1 text-amber-500 text-[10px] font-black uppercase"><AlertCircle size={12} /> Late</span>
+                        : <span className="flex items-center gap-1 text-emerald-500 text-[10px] font-black uppercase"><CheckCircle2 size={12} /> On time</span>}
                     </td>
+                    <td className="p-4 sm:p-5 text-[10px] font-black uppercase text-slate-400">{l.source === 'auto' ? 'Auto (Japa counter)' : 'Manual'}</td>
                   </tr>
-                ))
-              ) : filteredLogs.map((l) => (
-                <tr key={l.id} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="p-6 font-bold text-slate-900">{l.users?.full_name}</td>
-                  <td className="p-6 font-bold text-slate-600">{new Date(l.log_date).toLocaleDateString()}</td>
-                  <td className="p-6">
-                    <p className="text-xs font-bold text-slate-500">📿 {l.chanting_rounds} · 📖 {l.reading_minutes}m</p>
-                  </td>
-                  <td className="p-6 font-black text-indigo-600">+{l.points_earned}</td>
-                  <td className="p-6">
-                    {l.is_late_submission ? (
-                      <span className="flex items-center gap-1 text-amber-500 text-[10px] font-black uppercase"><AlertCircle size={12} /> Late</span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-emerald-500 text-[10px] font-black uppercase"><CheckCircle2 size={12} /> On Time</span>
-                    )}
-                  </td>
-                  <td className="p-6 text-right">
-                    <button onClick={() => handleDeleteLog(l)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer"><Trash2 size={18} /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Mobile Cards View */}
-        <div className="md:hidden p-4 space-y-4">
-          {isLoading ? (
-            Array(3).fill(0).map((_, i) => (
-              <div key={i} className="animate-pulse bg-slate-50 border border-slate-100 rounded-3xl p-5 space-y-4">
-                <div className="h-4 bg-slate-200 rounded w-1/3" />
-                <div className="h-8 bg-slate-200 rounded w-full" />
-              </div>
-            ))
-          ) : filteredLogs.length === 0 ? (
-            <div className="text-center py-8 text-slate-400 font-bold">No activity logs found.</div>
+                ))}
+              </tbody>
+            </table>
           ) : (
-            filteredLogs.map((l) => (
-              <div key={l.id} className="bg-slate-50 border border-slate-100 rounded-3xl p-5 space-y-4 hover:shadow-md transition-all">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h4 className="font-bold text-slate-900">{l.users?.full_name}</h4>
-                    <p className="text-xs text-slate-400 font-semibold">{new Date(l.log_date).toLocaleDateString()}</p>
-                  </div>
-                  <span className="font-black text-indigo-600 text-sm">+{l.points_earned} pts</span>
-                </div>
-
-                <div className="flex justify-between items-center text-xs border-t border-slate-200/50 pt-3">
-                  <div className="space-y-0.5">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Spiritual Sadhana</p>
-                    <p className="font-bold text-slate-700">📿 {l.chanting_rounds} Rounds · 📖 {l.reading_minutes}m Reading</p>
-                  </div>
-                  
-                  <div>
-                    {l.is_late_submission ? (
-                      <span className="px-2.5 py-1 bg-amber-50 text-amber-600 rounded-full text-[9px] font-black uppercase flex items-center gap-1">
-                        <AlertCircle size={10} /> Late
-                      </span>
-                    ) : (
-                      <span className="px-2.5 py-1 bg-emerald-50 text-emerald-600 rounded-full text-[9px] font-black uppercase flex items-center gap-1">
-                        <CheckCircle2 size={10} /> On Time
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex justify-end pt-2 border-t border-slate-100">
-                  <button
-                    onClick={() => handleDeleteLog(l)}
-                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer"
-                    title="Delete Log"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </div>
-            ))
+            <table className="w-full text-left min-w-[640px]">
+              <thead className="bg-slate-50">
+                <tr>{['Student', 'Date', 'Type', 'Points', 'Note'].map((h) => <th key={h} className="p-4 sm:p-5 font-black text-slate-400 uppercase text-[10px] tracking-widest">{h}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {isLoading ? (
+                  <tr><td colSpan={5} className="p-10 text-center text-slate-400 font-bold">Loading…</td></tr>
+                ) : filteredLedger.length === 0 ? (
+                  <tr><td colSpan={5} className="p-10 text-center text-slate-400 font-bold">No entries found.</td></tr>
+                ) : filteredLedger.map((l) => (
+                  <tr key={l.id} className="hover:bg-slate-50/50">
+                    <td className="p-4 sm:p-5 font-bold text-slate-900">{l.users?.full_name}</td>
+                    <td className="p-4 sm:p-5 font-bold text-slate-600">{l.activity_date}</td>
+                    <td className="p-4 sm:p-5 text-xs font-bold text-slate-600">{SOURCE_LABEL[l.source] || l.source}</td>
+                    <td className={`p-4 sm:p-5 font-black ${Number(l.points) < 0 ? 'text-red-600' : 'text-indigo-600'}`}>{Number(l.points) > 0 ? '+' : ''}{Number(l.points)}</td>
+                    <td className="p-4 sm:p-5 text-xs font-medium text-slate-500 max-w-xs truncate">{l.note}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
-
       </div>
     </div>
   );

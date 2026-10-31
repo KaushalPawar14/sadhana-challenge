@@ -4,6 +4,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuthStore } from '@/store/authStore';
+import { useActiveCompetition } from '@/hooks/useActiveCompetition';
+import { istDateOf, istToday } from '@/lib/ist';
+import { includesReading } from '@/lib/competition';
 import {
   BookOpen, Globe, FileText, ExternalLink, Sparkles, Calendar,
   Loader2, ArrowLeft, Type, Sun, Moon, RotateCcw,
@@ -11,7 +14,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
-// @ts-ignore
+// @ts-expect-error mammoth ships no types for its browser bundle
 import mammoth from 'mammoth/mammoth.browser';
 
 interface Book {
@@ -25,7 +28,10 @@ interface Book {
 type ReaderTheme = 'dark' | 'coffee' | 'white';
 
 export default function BooksPage() {
-  const { user } = useAuthStore();
+  const { user, isAdmin } = useAuthStore();
+  const { loading: compLoading, competition, features } = useActiveCompetition();
+  // reading time is only measured (and scored) while the running competition includes reading
+  const readingCounts = !!competition && includesReading(competition.type);
 
   // Books List State
   const [books, setBooks] = useState<Book[]>([]);
@@ -72,31 +78,20 @@ export default function BooksPage() {
   const fetchReadingStats = async () => {
     if (!user) return;
     try {
-      const { data, error } = await supabase
-        .from('reading_sessions')
-        .select('seconds_read, created_at')
-        .eq('user_id', user.id);
-
+      // own sessions of the running competition (counted_seconds is measured by the server)
+      let q = supabase.from('reading_sessions').select('counted_seconds, started_at').eq('user_id', user.id).eq('status', 'closed');
+      if (competition) q = q.eq('competition_id', competition.id);
+      const { data, error } = await q;
       if (error) throw error;
-
-      if (data) {
-        let totalSecs = 0;
-        let todaySecs = 0;
-        // Calculate today's date in local system timezone (YYYY-MM-DD format)
-        const todayStr = new Date().toLocaleDateString('en-CA');
-
-        data.forEach(session => {
-          totalSecs += session.seconds_read;
-          // Check if session date falls in today's local date
-          const sessionDateStr = new Date(session.created_at).toLocaleDateString('en-CA');
-          if (sessionDateStr === todayStr) {
-            todaySecs += session.seconds_read;
-          }
-        });
-
-        setTodayReadingMinutes(Math.round(todaySecs / 60));
-        setTotalReadingMinutes(Math.round(totalSecs / 60));
-      }
+      const todayStr = istToday();
+      let totalSecs = 0;
+      let todaySecs = 0;
+      (data || []).forEach((session: any) => {
+        totalSecs += session.counted_seconds || 0;
+        if (session.started_at && istDateOf(session.started_at) === todayStr) todaySecs += session.counted_seconds || 0;
+      });
+      setTodayReadingMinutes(Math.round(todaySecs / 60));
+      setTotalReadingMinutes(Math.round(totalSecs / 60));
     } catch (err) {
       console.error('Error fetching reading stats:', err);
     }
@@ -107,7 +102,8 @@ export default function BooksPage() {
     if (user) {
       fetchReadingStats();
     }
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, competition?.id]);
 
   useEffect(() => {
     if (activeBook) {
@@ -322,123 +318,118 @@ export default function BooksPage() {
     }
   };
 
-  // Save the reading session segment to Supabase (only if active & > 10s)
-  const saveReadingSession = (isIdle = false) => {
-    if (!activeBook || !sessionStartTime.current) return;
+  // ---- Reading time is measured by the SERVER (api/save-reading-session). The browser only says
+  // "a session started", "I am still active" (heartbeat) and "the session ended"; it never sends seconds.
+  const sessionIdRef = useRef<string | null>(null);
+  const startingRef = useRef(false);
+  const heartbeatIntervalId = useRef<any>(null);
 
-    const now = Date.now();
-    const elapsedMs = now - sessionStartTime.current;
-    let secondsRead = Math.floor(elapsedMs / 1000);
-
-    // Rule: If triggered by idle timeout, subtract 180s (3 minutes)
-    if (isIdle) {
-      secondsRead = Math.max(0, secondsRead - 180);
-    }
-
-    // Rule: Only save if seconds_read > 10
-    if (secondsRead > 10) {
-      const payload = JSON.stringify({
-        bookId: activeBook.id,
-        secondsRead
-      });
-
-      // Data Transmission: sendBeacon or keepalive fetch
-      if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
-        const blob = new Blob([payload], { type: 'application/json' });
-        navigator.sendBeacon('/api/save-reading-session', blob);
-      } else {
-        fetch('/api/save-reading-session', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: payload,
-          keepalive: true,
-        }).catch((err) => console.error('Failed to send reading session:', err));
-      }
-    }
-
-    // Reset start time so subsequent saves in the same view compute new time
-    sessionStartTime.current = null;
+  const postSession = async (body: Record<string, unknown>) => {
+    const res = await fetch('/api/save-reading-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      keepalive: true,
+    });
+    return res.json().catch(() => ({}));
   };
 
-  // Setup Activity Monitor & Session Tracking
-  useEffect(() => {
-    if (activeBook && !readerLoading && chapters.length > 0) {
-      // Start tracking
+  // End the current server session. `useBeacon` is used while the page is going away.
+  const endServerSession = (useBeacon = false) => {
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    sessionIdRef.current = null;
+    const active = Date.now() - lastInteractionTime.current < 60000;
+    const payload = JSON.stringify({ action: 'end', sessionId: sid, active });
+    if (useBeacon && typeof navigator !== 'undefined' && navigator.sendBeacon) {
+      navigator.sendBeacon('/api/save-reading-session', new Blob([payload], { type: 'application/json' }));
+    } else {
+      fetch('/api/save-reading-session', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true,
+      }).catch(() => {});
+    }
+    if (heartbeatIntervalId.current) { clearInterval(heartbeatIntervalId.current); heartbeatIntervalId.current = null; }
+    isTracking.current = false;
+    sessionStartTime.current = null;
+    stopClockInterval();
+  };
+
+  const startServerSession = async (bookId: string) => {
+    if (sessionIdRef.current || startingRef.current || !readingCounts) return;
+    startingRef.current = true;
+    try {
+      const data = await postSession({ action: 'start', bookId });
+      if (!data?.sessionId) return; // e.g. no active reading competition: nothing to track
+      sessionIdRef.current = data.sessionId;
       isTracking.current = true;
       sessionStartTime.current = Date.now();
       lastInteractionTime.current = Date.now();
       startClockInterval();
-
-      // Setup 3-minute idle timeout
-      if (idleTimeoutId.current) clearTimeout(idleTimeoutId.current);
-      idleTimeoutId.current = setTimeout(() => {
-        saveReadingSession(true);
-        isTracking.current = false;
-        stopClockInterval();
-      }, 180000);
-
-      // Activity handler on user interaction
-      const handleActivity = () => {
-        lastInteractionTime.current = Date.now();
-        
-        if (!isTracking.current) {
-          isTracking.current = true;
-          sessionStartTime.current = Date.now();
-          startClockInterval();
+      if (heartbeatIntervalId.current) clearInterval(heartbeatIntervalId.current);
+      heartbeatIntervalId.current = setInterval(() => {
+        const sid = sessionIdRef.current;
+        if (!sid) return;
+        // only count time while the reader has been active in the last 60 s
+        if (Date.now() - lastInteractionTime.current < 60000) {
+          postSession({ action: 'heartbeat', sessionId: sid })
+            .then((r) => { if (r && r.open === false) endServerSession(false); })
+            .catch(() => {});
         }
-
-        // Reset idle timeout
-        if (idleTimeoutId.current) clearTimeout(idleTimeoutId.current);
-        idleTimeoutId.current = setTimeout(() => {
-          saveReadingSession(true);
-          isTracking.current = false;
-          stopClockInterval();
-        }, 180000);
-      };
-
-      // Attach interaction listeners
-      window.addEventListener('mousemove', handleActivity);
-      window.addEventListener('touchstart', handleActivity);
-      window.addEventListener('keydown', handleActivity);
-      window.addEventListener('scroll', handleActivity, { passive: true });
-
-      // Handle visibility changes (e.g. minimizing app or switching tabs)
-      const handleVisibilityChange = () => {
-        if (document.visibilityState === 'hidden') {
-          saveReadingSession(false);
-          isTracking.current = false;
-          stopClockInterval();
-        }
-      };
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-
-      return () => {
-        // Save session on exit
-        saveReadingSession(false);
-
-        // Remove listeners
-        window.removeEventListener('mousemove', handleActivity);
-        window.removeEventListener('touchstart', handleActivity);
-        window.removeEventListener('keydown', handleActivity);
-        window.removeEventListener('scroll', handleActivity);
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
-
-        if (idleTimeoutId.current) clearTimeout(idleTimeoutId.current);
-        stopClockInterval();
-        isTracking.current = false;
-        sessionStartTime.current = null;
-      };
+      }, 30000);
+    } finally {
+      startingRef.current = false;
     }
-  }, [activeBook, readerLoading, chapters.length]);
+  };
+
+  // Session lifecycle: start when the reader content is ready, end on idle / hidden tab / close.
+  useEffect(() => {
+    if (!(activeBook && !readerLoading && chapters.length > 0 && readingCounts)) return;
+    const bookId = activeBook.id;
+    startServerSession(bookId);
+
+    const armIdle = () => {
+      if (idleTimeoutId.current) clearTimeout(idleTimeoutId.current);
+      idleTimeoutId.current = setTimeout(() => endServerSession(false), 180000); // 3 min idle -> end
+    };
+    armIdle();
+
+    const handleActivity = () => {
+      lastInteractionTime.current = Date.now();
+      if (!sessionIdRef.current) startServerSession(bookId); // resume after idle
+      armIdle();
+    };
+    window.addEventListener('mousemove', handleActivity);
+    window.addEventListener('touchstart', handleActivity);
+    window.addEventListener('keydown', handleActivity);
+    window.addEventListener('scroll', handleActivity, { passive: true });
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') endServerSession(true);
+    };
+    const handlePageHide = () => endServerSession(true);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handlePageHide);
+
+    return () => {
+      endServerSession(true);
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('touchstart', handleActivity);
+      window.removeEventListener('keydown', handleActivity);
+      window.removeEventListener('scroll', handleActivity);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageHide);
+      if (idleTimeoutId.current) clearTimeout(idleTimeoutId.current);
+      stopClockInterval();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeBook, readerLoading, chapters.length, readingCounts]);
 
   const fetchBooks = async () => {
     setIsLoading(true);
     try {
       const { data, error } = await supabase
         .from('books')
-        .select('*')
+        .select('id, title, language, pdf_link, created_at')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -540,7 +531,8 @@ export default function BooksPage() {
     setActiveBook(null);
     setReaderHtml('');
     setReaderError('');
-    fetchReadingStats();
+    // the server closes the session a moment after the reader unmounts
+    setTimeout(fetchReadingStats, 1500);
   };
 
   // Exit reader with prompt checking
@@ -581,6 +573,17 @@ export default function BooksPage() {
     }
   };
 
+  // the page AND the data are gated: RLS hides the catalog when the competition has no reading/bonus
+  if (!compLoading && !features?.books && !isAdmin) {
+    return (
+      <div className="px-4 md:px-0 py-20 text-center">
+        <div className="text-5xl mb-4">📚</div>
+        <h2 className="text-2xl font-black text-slate-800 mb-2">Books are not part of the current competition</h2>
+        <p className="text-sm font-bold text-slate-500">The library opens when a reading competition (or bonus) is running.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="pb-32 px-4 md:px-0">
       <AnimatePresence mode="wait">
@@ -611,6 +614,12 @@ export default function BooksPage() {
                 </p>
               </div>
             </div>
+
+            {!compLoading && !readingCounts && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-4 text-sm font-bold">
+                Reading time is not scored in the current competition ({competition?.title}). You can still read for yourself.
+              </div>
+            )}
 
             {/* Filters Bar */}
             <div className="flex flex-col lg:flex-row gap-6 justify-between items-start lg:items-center">
@@ -654,7 +663,7 @@ export default function BooksPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-indigo-650 text-xs">📅</span>
                     <div>
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Today's Read</p>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Today&apos;s Read</p>
                       <p className="text-xs font-black text-slate-800 leading-none">{todayReadingMinutes} mins</p>
                     </div>
                   </div>
@@ -1076,7 +1085,7 @@ export default function BooksPage() {
                     </div>
 
                     <p className="text-sm font-bold opacity-80 leading-relaxed">
-                      You haven't set a bookmark in this book yet. Would you like to mark where you are so you can easily resume next time?
+                      You haven&apos;t set a bookmark in this book yet. Would you like to mark where you are so you can easily resume next time?
                     </p>
 
                     <div className="flex gap-3 justify-end pt-2">

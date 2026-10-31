@@ -1,138 +1,60 @@
-export interface ActivityInput {
-  chanting_rounds: number;
-  reading_minutes: number;
-  hearing_minutes: number;
-  target_chanting: number;
-  target_reading: number;
-  target_hearing: number;
-  streak_count: number;
-  points_per_chanting: number;
-  points_per_reading: number;
-  points_per_hearing: number;
-  streak_bonus_multiplier: number;
+// Pure scoring helpers. The AUTHORITATIVE scoring runs inside Postgres (public.recompute_user) so that
+// every point is written server-side and is rebuildable. These functions mirror that logic exactly and
+// are used for previews ("worked example" in the competition form) and tests. They never touch the DB.
+// Nothing in the browser writes points.
+
+import { CompetitionConfig, mergeConfig } from '@/lib/competition';
+import { diffDays } from '@/lib/ist';
+
+export function streakMultiplier(streak: number, cfg: Partial<CompetitionConfig>): number {
+  const c = mergeConfig(cfg);
+  if (!c.streak_multiplier_enabled) return 1;
+  return Math.min(Math.max(1, streak), c.streak_multiplier_cap);
 }
 
-export interface CalculationResult {
-  base_points: number;
-  streak_bonus: number;
-  total_points: number;
-  completion_percentage: number;
+/** base = round(rounds / commitment × points_at_commitment); points = base × streak multiplier */
+export function scoreChantingDay(rounds: number, commitment: number, streak: number, cfg: Partial<CompetitionConfig>) {
+  const c = mergeConfig(cfg);
+  const commit = commitment > 0 ? commitment : 16;
+  const base = Math.round((rounds / commit) * c.chanting_points_at_commitment);
+  const multiplier = streakMultiplier(streak, c);
+  return { base, multiplier, points: base * multiplier };
 }
 
-export function calculatePoints(input: ActivityInput): CalculationResult {
-  // Commitment Scoring Formula: Base Points = (chanting_rounds / target_chanting) * 10
-  const target = input.target_chanting && input.target_chanting > 0 ? input.target_chanting : 16;
-  const rawBasePoints = (input.chanting_rounds / target) * 10;
-  const base_points = Math.round(rawBasePoints);
-
-  // Direct Streak Multiplier: Day 1 = 1x, Day 2 = 2x, Day 3 = 3x, Day N = Nx
-  const effectiveStreak = Math.max(1, input.streak_count || 1);
-  const streakMultiplier = effectiveStreak;
-
-  const total_points = Math.round(base_points * streakMultiplier);
-  const streak_bonus = total_points - base_points;
-
-  const completion_percentage = Math.min(100, Math.round((input.chanting_rounds / target) * 100));
-
-  return {
-    base_points,
-    streak_bonus,
-    total_points,
-    completion_percentage
-  };
+/** whole minutes per day, capped; points = capped minutes × points per minute */
+export function scoreReadingDay(totalCountedSeconds: number, cfg: Partial<CompetitionConfig>) {
+  const c = mergeConfig(cfg);
+  const minutes = Math.floor(totalCountedSeconds / 60);
+  const counted = Math.min(minutes, c.reading_daily_cap_minutes);
+  return { minutes, counted, points: counted * c.reading_points_per_minute };
 }
 
-export interface UserStats {
-  total_points: number;
-  streak_count: number;
-  cumulative_reading_minutes: number;
-  early_morning_logs_count: number; // submitted before 6 AM
-  is_first_log: boolean;
+export function weightedTotal(
+  type: 'reading' | 'chanting' | 'both',
+  parts: { chanting: number; reading: number; bonus: number },
+  cfg: Partial<CompetitionConfig>
+) {
+  const c = mergeConfig(cfg);
+  const wc = type === 'both' ? c.weight_chanting : 1;
+  const wr = type === 'both' ? c.weight_reading : 1;
+  return parts.chanting * wc + parts.reading * wr + parts.bonus;
 }
 
-export function checkAwardUnlocks(userStats: UserStats): string[] {
-  const newlyUnlocked: string[] = [];
-
-  // 'mahayogi_crown'  → total_points >= 500
-  if (userStats.total_points >= 500) newlyUnlocked.push('mahayogi_crown');
-
-  // 'unbroken_flame'  → streak_count >= 7
-  if (userStats.streak_count >= 7) newlyUnlocked.push('unbroken_flame');
-
-
-
-  // 'brahma_muhurta'  → 5+ logs submitted before 6 AM
-  if (userStats.early_morning_logs_count >= 5) newlyUnlocked.push('brahma_muhurta');
-
-  // 'rising_sadhaka'  → first log ever submitted
-  if (userStats.is_first_log) newlyUnlocked.push('rising_sadhaka');
-
-  return newlyUnlocked;
-}
-
-export function updateStreak(
-  lastLogDate: string | null, // DATE string from DB
-  todayDate: string, // DATE string 'YYYY-MM-DD'
-  currentStreak: number,
-  freezeCredits: number
-): {
-  new_streak: number;
-  freeze_used: boolean;
-  new_freeze_credits: number;
-  streak_broken: boolean;
-  error?: string;
-} {
-  if (!lastLogDate) {
-    return {
-      new_streak: 1,
-      freeze_used: false,
-      new_freeze_credits: freezeCredits,
-      streak_broken: false
-    };
+/** Streak walk used by the DB: +1 for consecutive days, a shield bridges a single missed day. */
+export function walkStreak(activeDays: string[], shields: number) {
+  let streak = 0, best = 0, shield = shields, last: string | null = null;
+  const perDay: Record<string, number> = {};
+  for (const day of [...activeDays].sort()) {
+    if (!last) streak = 1;
+    else {
+      const gap = diffDays(day, last);
+      if (gap === 1) streak += 1;
+      else if (gap === 2 && shield > 0) { streak += 1; shield -= 1; }
+      else streak = 1;
+    }
+    best = Math.max(best, streak);
+    perDay[day] = streak;
+    last = day;
   }
-
-  const last = new Date(lastLogDate);
-  const today = new Date(todayDate);
-
-  // Normalize dates to midnight for comparison
-  last.setHours(0, 0, 0, 0);
-  today.setHours(0, 0, 0, 0);
-
-  const diffDays = Math.floor((today.getTime() - last.getTime()) / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) {
-    return {
-      new_streak: currentStreak,
-      freeze_used: false,
-      new_freeze_credits: freezeCredits,
-      streak_broken: false,
-      error: "You've already logged today! Come back tomorrow. 🙏"
-    };
-  }
-
-  if (diffDays === 1) {
-    return {
-      new_streak: currentStreak + 1,
-      freeze_used: false,
-      new_freeze_credits: freezeCredits,
-      streak_broken: false
-    };
-  }
-
-  if (diffDays === 2 && freezeCredits > 0) {
-    return {
-      new_streak: currentStreak + 1,
-      freeze_used: true,
-      new_freeze_credits: freezeCredits - 1,
-      streak_broken: false
-    };
-  }
-
-  // Streak broken
-  return {
-    new_streak: 1,
-    freeze_used: false,
-    new_freeze_credits: freezeCredits,
-    streak_broken: true
-  };
+  return { streak, best, shieldsLeft: shield, perDay };
 }

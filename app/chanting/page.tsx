@@ -5,6 +5,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { createBrowserClient } from '@supabase/ssr';
 import { useAuthStore } from '@/store/authStore';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
+import { useActiveCompetition } from '@/hooks/useActiveCompetition';
+import { istToday, formatLong } from '@/lib/ist';
+import { buildRulesText, includesChanting } from '@/lib/competition';
+import Link from 'next/link';
 import { 
   Volume2, VolumeX, RotateCcw, AlertTriangle, 
   Sparkles, CheckCircle2, Flame, Award, Heart, HelpCircle, ShieldCheck
@@ -14,6 +18,9 @@ import { toast } from 'react-hot-toast';
 
 export default function ChantingPage() {
   const { user } = useAuthStore();
+  const { data: activeData, loading: activeLoading, competition } = useActiveCompetition();
+  // the counter only syncs while the running competition includes chanting
+  const chantingEnabled = !!competition && includesChanting(competition.type);
 
   const [supabase] = useState(() => createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -29,10 +36,8 @@ export default function ChantingPage() {
 
   const [isInfoModalOpen, setIsInfoModalOpen] = useState<boolean>(false);
 
-  const getTodayStr = () => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  };
+  // day boundaries are IST everywhere (same rule as the database)
+  const getTodayStr = () => istToday();
 
   // Sync state with backend and local storage on mount
   useEffect(() => {
@@ -59,7 +64,7 @@ export default function ChantingPage() {
     }
 
     // Trigger background auto-sync & auto-fulfillment check with Supabase API
-    fetch('/api/sync-chanting', { method: 'POST' })
+    fetch('/api/sync-chanting', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
       .then(res => res.json())
       .then(data => {
         if (data.success) {
@@ -83,7 +88,7 @@ export default function ChantingPage() {
   }, [user]);
 
   // Persist counter state to localStorage and Supabase API
-  const saveState = useCallback((newBead: number, newToday: number, newTotal: number) => {
+  const saveState = useCallback((newBead: number, newToday: number, newTotal: number, syncServer = true) => {
     if (!user?.id) return;
     const todayStr = getTodayStr();
     const storageKey = `sadhana_chant_data_${user.id}`;
@@ -94,16 +99,15 @@ export default function ChantingPage() {
       lastDate: todayStr
     }));
 
-    // Sync rounds with backend API for auto-fulfillment protection
+    // Sync rounds with the backend (server keeps the counter; completed days are auto-filled later)
+    // only a completed round changes what the server needs to know
+    if (!chantingEnabled || !syncServer) return;
     fetch('/api/sync-chanting', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        logDate: todayStr,
-        roundsChanted: newToday
-      })
+      body: JSON.stringify({ roundsChanted: newToday })
     }).catch(err => console.error('Failed to sync chanting with backend:', err));
-  }, [user]);
+  }, [user, chantingEnabled]);
 
   // Web Audio API synthesized sound generator
   const playSound = useCallback((type: 'bead' | 'completion') => {
@@ -155,6 +159,7 @@ export default function ChantingPage() {
 
   // Handle single bead count increment
   const handleBeadTap = () => {
+    if (!activeLoading && !chantingEnabled) return; // counter is disabled outside a chanting competition
     setIsAnimating(true);
     setTimeout(() => setIsAnimating(false), 200);
 
@@ -199,7 +204,7 @@ export default function ChantingPage() {
       triggerHaptic();
     }
 
-    saveState(nextBead, nextToday, nextTotal);
+    saveState(nextBead, nextToday, nextTotal, nextToday !== todayRounds);
   };
 
   // Keyboard shortcut listener (Spacebar or Enter to tap)
@@ -216,13 +221,13 @@ export default function ChantingPage() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [beadCount, todayRounds, totalRounds, saveState, playSound, triggerHaptic]);
+  }, [beadCount, todayRounds, totalRounds, saveState, playSound, triggerHaptic, chantingEnabled, activeLoading]);
 
   const handleResetCurrentBeads = () => {
     if (beadCount === 0) return;
     if (confirm("Reset current bead count to 0 for this round?")) {
       setBeadCount(0);
-      saveState(0, todayRounds, totalRounds);
+      saveState(0, todayRounds, totalRounds, false);
       toast.success("Bead count reset to 0");
     }
   };
@@ -268,6 +273,17 @@ export default function ChantingPage() {
           <ThemeSwitcher />
         </div>
       </div>
+
+      {!activeLoading && !chantingEnabled && (
+        <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-5 text-sm font-bold">
+          {competition
+            ? <>Chanting is not part of the current competition (<strong>{competition.title}</strong>). The counter is paused.</>
+            : activeData?.next
+              ? <>No competition is running. The next one starts on <strong>{formatLong(activeData.next.start_date)}</strong>.</>
+              : <>No competition is running right now. The counter is paused.</>}
+          {competition && !chantingEnabled && <Link href="/books" className="ml-2 underline">Go to Books</Link>}
+        </div>
+      )}
 
       {/* Main Counter & Stats Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
@@ -358,7 +374,7 @@ export default function ChantingPage() {
                 🔥
               </div>
               <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Today's Chanted Rounds</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Today&apos;s Chanted Rounds</p>
                 <p className="text-3xl font-black text-slate-900">{todayRounds} <span className="text-sm font-bold text-slate-400">rounds</span></p>
               </div>
             </div>
@@ -404,7 +420,7 @@ export default function ChantingPage() {
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-amber-400 font-bold">•</span>
-                <span>If you forget to manually log your report, your chanted rounds here will <strong>auto-fulfill your report</strong> before the day ends so your streak and shield are safe!</span>
+                <span>If you forget to manually log your report, your chanted rounds here will <strong>auto-fulfill your report</strong> once that day is over, so your streak and shield are safe!</span>
               </li>
             </ul>
           </div>
@@ -466,9 +482,17 @@ export default function ChantingPage() {
                     We recommend manually logging your daily activity in the <strong className="text-indigo-600">Leaderboard &gt; Log Activity</strong> tab for official report tracking.
                   </p>
                   <p className="text-[11px] text-slate-700 leading-snug">
-                    However, if you chant using this counter but <strong className="text-amber-950 font-bold">forget to manually submit your daily report</strong>, your in-app chanted rounds will <strong className="text-emerald-700 font-extrabold">automatically auto-fulfill your daily report</strong> before the day ends!
+                    However, if you chant using this counter but <strong className="text-amber-950 font-bold">forget to manually submit your daily report</strong>, your in-app chanted rounds will <strong className="text-emerald-700 font-extrabold">automatically auto-fulfill your daily report</strong> once that day is over (IST midnight). A day that is still in progress is never locked, so you can still submit it yourself.
                   </p>
                 </div>
+                {competition && includesChanting(competition.type) && buildRulesText(competition).filter((x) => x.heading === 'Chanting' || x.heading === 'Schedule').map((sec) => (
+                  <div key={sec.heading} className="bg-indigo-50/60 border border-indigo-100/70 p-4 rounded-2xl space-y-1.5">
+                    <h4 className="text-[11px] font-black text-indigo-800 uppercase tracking-wider">{sec.heading} rules · {competition.title}</h4>
+                    <ul className="text-[11px] text-slate-700 leading-snug space-y-1">
+                      {sec.items.map((it, i) => <li key={i}>• {it}</li>)}
+                    </ul>
+                  </div>
+                ))}
                 <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/70 text-[11px] text-slate-500">
                   💡 <strong>Streak Protection:</strong> Auto-fulfillment guarantees that your daily streak is maintained and your 🛡️ Streak Shield is never wasted on forgotten reports.
                 </div>

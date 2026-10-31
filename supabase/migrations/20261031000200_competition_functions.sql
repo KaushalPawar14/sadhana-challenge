@@ -1,0 +1,1194 @@
+-- =====================================================================
+-- 20261031000200  Scoring engine, student RPCs, HOD RPCs, awards
+-- All points are written ONLY here (SECURITY DEFINER), never by the browser.
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- internal helpers (not granted to API roles in 000300)
+-- ---------------------------------------------------------------------
+create or replace function public.assert_hod() returns void
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  if not public.is_hod() then raise exception 'FORBIDDEN: HOD only'; end if;
+end $$;
+
+create or replace function public.assert_hod_or_system() returns void
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  if not (public.is_hod() or public.is_system_context() or coalesce(auth.role(), '') = 'service_role') then
+    raise exception 'FORBIDDEN: HOD only';
+  end if;
+end $$;
+
+-- Recompute every derived number for one user in one competition from the source rows.
+-- chanting rows come from activity_logs, reading rows from closed reading_sessions;
+-- quiz_bonus / manual_bonus / adjustment ledger rows are left untouched.
+create or replace function public.recompute_user(p_comp uuid, p_user uuid)
+returns public.competition_totals
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  c public.competitions;
+  cfg jsonb;
+  pts_at numeric; mult_on boolean; mult_cap int; shields int;
+  ppm numeric; cap_min int; min_s int; w_c numeric; w_r numeric; use_logged boolean;
+  streak int := 0; best int := 0; shield int := 0; last_d date;
+  d record; mult numeric; base numeric; day_pts numeric; capped int;
+  ch_days date[] := '{}'; rd_days date[] := '{}';
+  v_ch numeric; v_rd numeric; v_bonus numeric; v_reached timestamptz; v_last date;
+  t public.competition_totals;
+begin
+  select * into c from public.competitions where id = p_comp;
+  if c.id is null then raise exception 'COMPETITION_NOT_FOUND'; end if;
+  if c.stored_status = 'finalized' then raise exception 'COMPETITION_FINALIZED'; end if;
+  perform pg_advisory_xact_lock(hashtextextended(p_comp::text || p_user::text, 0));
+
+  cfg := public.comp_cfg(c.config);
+  pts_at := (cfg ->> 'chanting_points_at_commitment')::numeric;
+  mult_on := (cfg ->> 'streak_multiplier_enabled')::boolean;
+  mult_cap := (cfg ->> 'streak_multiplier_cap')::int;
+  shields := (cfg ->> 'shield_count')::int;
+  use_logged := coalesce((cfg ->> 'use_logged_points')::boolean, false);
+  ppm := (cfg ->> 'reading_points_per_minute')::numeric;
+  cap_min := (cfg ->> 'reading_daily_cap_minutes')::int;
+  min_s := (cfg ->> 'reading_min_session_seconds')::int;
+  w_c := case when c.type = 'both' then (cfg ->> 'weight_chanting')::numeric else 1 end;
+  w_r := case when c.type = 'both' then (cfg ->> 'weight_reading')::numeric else 1 end;
+  shield := shields;
+
+  for d in
+    with ch as (
+      select l.log_date as day, l.chanting_rounds as rounds, l.id as ref, l.submitted_at as ts,
+             coalesce(l.commitment_rounds, 16) as commit_, l.points_earned as logged
+      from public.activity_logs l
+      where l.competition_id = p_comp and l.user_id = p_user and c.type in ('chanting', 'both')
+    ), rd as (
+      select public.ist_date_of(s.started_at) as day,
+             floor(sum(s.counted_seconds) / 60.0)::int as mins,
+             max(coalesce(s.ended_at, s.last_seen_at)) as ts
+      from public.reading_sessions s
+      where s.competition_id = p_comp and s.user_id = p_user and s.status = 'closed'
+        and s.counted_seconds >= min_s and c.type in ('reading', 'both')
+      group by 1
+    )
+    select coalesce(ch.day, rd.day) as day, ch.rounds, ch.ref, ch.ts as ch_ts, ch.commit_, ch.logged,
+           rd.mins, rd.ts as rd_ts,
+           (ch.day is not null) as has_ch, (coalesce(rd.mins, 0) > 0) as has_rd
+    from ch full join rd on ch.day = rd.day
+    order by 1
+  loop
+    if d.has_ch or d.has_rd then
+      if last_d is null then
+        streak := 1;
+      elsif d.day - last_d = 1 then
+        streak := streak + 1;
+      elsif d.day - last_d = 2 and shield > 0 then
+        streak := streak + 1; shield := shield - 1;
+      else
+        streak := 1;
+      end if;
+      best := greatest(best, streak);
+      last_d := d.day;
+    end if;
+
+    if d.has_ch then
+      mult := case when mult_on then least(streak, mult_cap) else 1 end;
+      base := round(d.rounds::numeric / d.commit_ * pts_at);
+      day_pts := base * mult;
+      if use_logged then day_pts := coalesce(d.logged, 0); end if;   -- migrated competition: keep historical per-day points
+      insert into public.points_ledger (competition_id, user_id, source, points, activity_date, reference_id, meta, created_at)
+      values (p_comp, p_user, 'chanting', day_pts, d.day, d.ref,
+              jsonb_build_object('rounds', d.rounds, 'commitment', d.commit_, 'base', base, 'multiplier', mult, 'streak', streak, 'legacy', use_logged),
+              coalesce(d.ch_ts, now()))
+      on conflict (competition_id, user_id, source, activity_date) where source in ('chanting', 'reading')
+      do update set points = excluded.points, reference_id = excluded.reference_id, meta = excluded.meta;
+      ch_days := ch_days || d.day;
+    end if;
+
+    if coalesce(d.mins, 0) > 0 then
+      capped := least(d.mins, cap_min);
+      day_pts := capped * ppm;
+      insert into public.points_ledger (competition_id, user_id, source, points, activity_date, meta, created_at)
+      values (p_comp, p_user, 'reading', day_pts, d.day,
+              jsonb_build_object('minutes', d.mins, 'counted_minutes', capped, 'cap', cap_min),
+              coalesce(d.rd_ts, now()))
+      on conflict (competition_id, user_id, source, activity_date) where source in ('chanting', 'reading')
+      do update set points = excluded.points, meta = excluded.meta;
+      rd_days := rd_days || d.day;
+    end if;
+  end loop;
+
+  delete from public.points_ledger
+   where competition_id = p_comp and user_id = p_user and source = 'chanting' and activity_date <> all (ch_days);
+  delete from public.points_ledger
+   where competition_id = p_comp and user_id = p_user and source = 'reading' and activity_date <> all (rd_days);
+
+  -- keep the legacy per-day column informative
+  update public.activity_logs a
+     set points_earned = coalesce((select p.points from public.points_ledger p
+                                    where p.competition_id = a.competition_id and p.user_id = a.user_id
+                                      and p.source = 'chanting' and p.activity_date = a.log_date), 0)::int
+   where a.competition_id = p_comp and a.user_id = p_user;
+
+  select coalesce(sum(points) filter (where source = 'chanting'), 0),
+         coalesce(sum(points) filter (where source = 'reading'), 0),
+         coalesce(sum(points) filter (where source in ('quiz_bonus', 'manual_bonus', 'adjustment')), 0),
+         max(created_at) filter (where points > 0)
+    into v_ch, v_rd, v_bonus, v_reached
+    from public.points_ledger where competition_id = p_comp and user_id = p_user;
+
+  insert into public.competition_totals as ct
+    (competition_id, user_id, chanting_points, reading_points, bonus_points, total,
+     current_streak, best_streak, shields_left, last_log_date, reached_at, updated_at)
+  values (p_comp, p_user, v_ch, v_rd, v_bonus, v_ch * w_c + v_rd * w_r + v_bonus,
+          streak, best, shield, last_d, v_reached, now())
+  on conflict (competition_id, user_id) do update set
+    chanting_points = excluded.chanting_points, reading_points = excluded.reading_points,
+    bonus_points = excluded.bonus_points, total = excluded.total,
+    current_streak = excluded.current_streak, best_streak = excluded.best_streak,
+    shields_left = excluded.shields_left, last_log_date = excluded.last_log_date,
+    reached_at = excluded.reached_at, updated_at = now()
+  returning * into t;
+
+  -- lifetime total (legacy users.total_points) is now derived, never written by clients
+  update public.users set total_points = coalesce(
+      (select round(sum(x.total))::int from public.competition_totals x where x.user_id = p_user), 0)
+   where id = p_user;
+  return t;
+end $$;
+
+create or replace function public.emit_feed(
+  p_comp uuid, p_user uuid, p_kind text, p_detail jsonb,
+  p_old public.competition_totals, p_new public.competition_totals, p_visible date default null)
+returns void language plpgsql security definer set search_path = public, pg_temp as $$
+declare u record;
+begin
+  select full_name, avatar_url, department, gender into u from public.users where id = p_user;
+  insert into public.activity_feed (competition_id, user_id, kind, full_name, avatar_url, department, gender,
+                                    detail, delta, streak, visible_from)
+  values (p_comp, p_user, p_kind, u.full_name, u.avatar_url, u.department, u.gender, coalesce(p_detail, '{}'),
+          jsonb_build_object(
+            'chanting', coalesce(p_new.chanting_points, 0) - coalesce(p_old.chanting_points, 0),
+            'reading', coalesce(p_new.reading_points, 0) - coalesce(p_old.reading_points, 0),
+            'bonus', coalesce(p_new.bonus_points, 0) - coalesce(p_old.bonus_points, 0),
+            'total', coalesce(p_new.total, 0) - coalesce(p_old.total, 0)),
+          p_new.current_streak, coalesce(p_visible, public.ist_today()));
+end $$;
+
+-- rebuild every derived row of a competition from the source tables
+create or replace function public.rebuild_competition_totals(p_comp uuid) returns integer
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare r record; n int := 0;
+begin
+  perform public.assert_hod_or_system();
+  for r in
+    select user_id from public.activity_logs where competition_id = p_comp
+    union select user_id from public.reading_sessions where competition_id = p_comp
+    union select user_id from public.points_ledger where competition_id = p_comp
+    union select user_id from public.competition_totals where competition_id = p_comp
+  loop
+    perform public.recompute_user(p_comp, r.user_id);
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- reading sessions (server-timed)
+-- ---------------------------------------------------------------------
+create or replace function public.reading_close_session(p_session uuid, p_active boolean)
+returns void language plpgsql security definer set search_path = public, pg_temp as $$
+declare s public.reading_sessions; c public.competitions; cfg jsonb; credit int := 0; counted int;
+        old public.competition_totals; new_ public.competition_totals; before_ numeric;
+begin
+  select * into s from public.reading_sessions where session_id = p_session for update;
+  if s.session_id is null or s.status <> 'open' then return; end if;
+  select * into c from public.competitions where id = s.competition_id;
+  cfg := public.comp_cfg(c.config);
+  if p_active and c.stored_status <> 'finalized' then
+    credit := least(greatest(extract(epoch from (public.app_now() - s.last_seen_at)), 0), 30)::int;
+  end if;
+  counted := s.counted_seconds + credit;
+  if counted < (cfg ->> 'reading_min_session_seconds')::int then counted := 0; end if;
+  update public.reading_sessions
+     set status = 'closed', counted_seconds = counted, seconds_read = counted,
+         ended_at = least(public.app_now(), s.last_seen_at + make_interval(secs => credit))
+   where session_id = p_session;
+  if counted > 0 and c.stored_status <> 'finalized' then
+    select * into old from public.competition_totals where competition_id = c.id and user_id = s.user_id;
+    new_ := public.recompute_user(c.id, s.user_id);
+    if coalesce(new_.reading_points, 0) <> coalesce(old.reading_points, 0) then
+      perform public.emit_feed(c.id, s.user_id, 'reading',
+        jsonb_build_object('minutes', round(counted / 60.0, 1)), old, new_);
+    end if;
+  end if;
+end $$;
+
+create or replace function public.close_stale_sessions(p_user uuid) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare r record;
+begin
+  for r in select session_id from public.reading_sessions
+           where user_id = p_user and status = 'open' and last_seen_at < public.app_now() - interval '3 minutes'
+  loop
+    perform public.reading_close_session(r.session_id, false);
+  end loop;
+end $$;
+
+create or replace function public.start_reading_session(p_book uuid) returns uuid
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare uid uuid := auth.uid(); c public.competitions; sid uuid; r record;
+begin
+  if uid is null then raise exception 'NOT_AUTHENTICATED'; end if;
+  c := public.active_competition();
+  if c.id is null then raise exception 'NO_ACTIVE_COMPETITION'; end if;
+  if c.type not in ('reading', 'both') then raise exception 'READING_NOT_ENABLED'; end if;
+  perform 1 from public.books where id = p_book;
+  if not found then raise exception 'BOOK_NOT_FOUND'; end if;
+  perform 1 from public.users where id = uid and is_onboarded;
+  if not found then raise exception 'NOT_ONBOARDED'; end if;
+  for r in select session_id from public.reading_sessions where user_id = uid and status = 'open' loop
+    perform public.reading_close_session(r.session_id, false);
+  end loop;
+  insert into public.reading_sessions (user_id, book_id, seconds_read, competition_id, started_at, last_seen_at, status, counted_seconds)
+  values (uid, p_book, 0, c.id, public.app_now(), public.app_now(), 'open', 0)
+  returning session_id into sid;
+  return sid;
+end $$;
+
+create or replace function public.heartbeat_reading_session(p_session uuid) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare uid uuid := auth.uid(); s public.reading_sessions; el numeric; c public.competitions;
+begin
+  select * into s from public.reading_sessions where session_id = p_session and user_id = uid for update;
+  if s.session_id is null or s.status <> 'open' then return jsonb_build_object('open', false); end if;
+  select * into c from public.competitions where id = s.competition_id;
+  if c.stored_status <> 'published' or public.ist_today() > c.end_date then
+    perform public.reading_close_session(p_session, false);
+    return jsonb_build_object('open', false);
+  end if;
+  el := extract(epoch from (public.app_now() - s.last_seen_at));
+  if el >= 5 then
+    update public.reading_sessions
+       set counted_seconds = counted_seconds + least(el, 45)::int, last_seen_at = public.app_now()
+     where session_id = p_session;
+  end if;
+  return jsonb_build_object('open', true);
+end $$;
+
+create or replace function public.end_reading_session(p_session uuid, p_active boolean default true) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare uid uuid := auth.uid();
+begin
+  perform 1 from public.reading_sessions where session_id = p_session and user_id = uid;
+  if not found then return; end if;
+  perform public.reading_close_session(p_session, p_active);
+end $$;
+
+-- ---------------------------------------------------------------------
+-- chanting
+-- ---------------------------------------------------------------------
+create or replace function public.set_commitment(p_rounds integer) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare uid uuid := auth.uid(); c public.competitions; cur int;
+begin
+  if uid is null then raise exception 'NOT_AUTHENTICATED'; end if;
+  c := public.open_competition();
+  if c.id is null then raise exception 'NO_ACTIVE_COMPETITION'; end if;
+  if c.type not in ('chanting', 'both') then raise exception 'CHANTING_NOT_ENABLED'; end if;
+  if p_rounds is null or p_rounds < 1 or p_rounds > 108 then raise exception 'INVALID_COMMITMENT'; end if;
+  perform 1 from public.users where id = uid and is_onboarded;
+  if not found then raise exception 'NOT_ONBOARDED'; end if;
+  select commitment_rounds into cur from public.competition_participants where competition_id = c.id and user_id = uid;
+  if cur is not null and p_rounds < cur then raise exception 'COMMITMENT_CANNOT_DECREASE'; end if;
+  insert into public.competition_participants (competition_id, user_id, commitment_rounds)
+  values (c.id, uid, p_rounds)
+  on conflict (competition_id, user_id) do update set commitment_rounds = excluded.commitment_rounds;
+  return jsonb_build_object('commitment', p_rounds);
+end $$;
+
+create or replace function public.log_chanting(p_date date, p_rounds integer) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare uid uuid := auth.uid(); c public.competitions; cfg jsonb; today date := public.ist_today();
+        commit_ int; d date; old public.competition_totals; new_ public.competition_totals; lg record; n int;
+begin
+  if uid is null then raise exception 'NOT_AUTHENTICATED'; end if;
+  perform 1 from public.users where id = uid and is_onboarded;
+  if not found then raise exception 'NOT_ONBOARDED'; end if;
+  c := public.open_competition();
+  if c.id is null then raise exception 'NO_ACTIVE_COMPETITION'; end if;
+  if c.type not in ('chanting', 'both') then raise exception 'CHANTING_NOT_ENABLED'; end if;
+  cfg := public.comp_cfg(c.config);
+  d := coalesce(p_date, today);
+  if d < c.start_date or d > c.end_date then raise exception 'DATE_OUTSIDE_COMPETITION'; end if;
+  if d > today then raise exception 'FUTURE_DATE'; end if;
+  if today - d > (cfg ->> 'late_log_days')::int then raise exception 'LATE_NOT_ALLOWED'; end if;
+  if p_rounds is null or p_rounds < 0 or p_rounds > 300 then raise exception 'INVALID_ROUNDS'; end if;
+  select commitment_rounds into commit_ from public.competition_participants where competition_id = c.id and user_id = uid;
+  if commit_ is null then raise exception 'COMMITMENT_REQUIRED'; end if;
+  select * into old from public.competition_totals where competition_id = c.id and user_id = uid;
+
+  insert into public.activity_logs (user_id, competition_id, log_date, chanting_rounds, points_earned,
+                                    is_late_submission, source, commitment_rounds, submitted_at)
+  values (uid, c.id, d, p_rounds, 0, d < today, 'manual', commit_, public.app_now())
+  on conflict (competition_id, user_id, log_date) do nothing;
+  get diagnostics n = row_count;
+  if n = 0 then raise exception 'ALREADY_LOGGED'; end if;
+
+  new_ := public.recompute_user(c.id, uid);
+  select points, meta into lg from public.points_ledger
+   where competition_id = c.id and user_id = uid and source = 'chanting' and activity_date = d;
+  perform public.emit_feed(c.id, uid, 'chanting', jsonb_build_object('rounds', p_rounds, 'date', d), old, new_);
+  return jsonb_build_object('points', lg.points, 'base', lg.meta -> 'base', 'multiplier', lg.meta -> 'multiplier',
+                            'streak', new_.current_streak, 'total', new_.total, 'date', d);
+end $$;
+
+-- Japa counter sync. p_rounds (optional) = rounds counted TODAY (never decreases).
+-- Auto-fulfils COMPLETED days only (never today).
+create or replace function public.sync_chanting(p_rounds integer default null) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare uid uuid := auth.uid(); c public.competitions; today date := public.ist_today();
+        today_rounds int := 0; fulfilled date[] := '{}'; r record; n int; commit_ int;
+        old public.competition_totals; new_ public.competition_totals; dflt int;
+begin
+  if uid is null then raise exception 'NOT_AUTHENTICATED'; end if;
+  perform public.close_stale_sessions(uid);
+  c := public.open_competition();
+  if c.id is null or c.type not in ('chanting', 'both') then
+    return jsonb_build_object('success', true, 'active', false, 'todayRounds', 0, 'autoFulfilledDates', '[]'::jsonb);
+  end if;
+  perform 1 from public.users where id = uid and is_onboarded;
+  if not found then raise exception 'NOT_ONBOARDED'; end if;
+
+  if p_rounds is not null then
+    if p_rounds < 0 or p_rounds > 300 then raise exception 'INVALID_ROUNDS'; end if;
+    if today between c.start_date and c.end_date then
+      insert into public.user_chanting_logs (user_id, competition_id, log_date, rounds_chanted, updated_at)
+      values (uid, c.id, today, p_rounds, public.app_now())
+      on conflict (competition_id, user_id, log_date) do update
+        set rounds_chanted = greatest(public.user_chanting_logs.rounds_chanted, excluded.rounds_chanted),
+            updated_at = public.app_now();
+    end if;
+  end if;
+
+  select commitment_rounds into commit_ from public.competition_participants where competition_id = c.id and user_id = uid;
+  for r in
+    select l.log_date, l.rounds_chanted from public.user_chanting_logs l
+    where l.competition_id = c.id and l.user_id = uid and l.rounds_chanted > 0
+      and l.log_date < today and l.log_date between c.start_date and c.end_date
+      and not exists (select 1 from public.activity_logs a
+                      where a.competition_id = c.id and a.user_id = uid and a.log_date = l.log_date)
+    order by l.log_date
+  loop
+    if commit_ is null then
+      select least(greatest(coalesce(target_chanting, 16), 1), 108) into dflt from public.users where id = uid;
+      insert into public.competition_participants (competition_id, user_id, commitment_rounds)
+      values (c.id, uid, dflt) on conflict (competition_id, user_id) do update
+        set commitment_rounds = coalesce(public.competition_participants.commitment_rounds, excluded.commitment_rounds);
+      commit_ := dflt;
+    end if;
+    insert into public.activity_logs (user_id, competition_id, log_date, chanting_rounds, points_earned,
+                                      is_late_submission, source, commitment_rounds, submitted_at)
+    values (uid, c.id, r.log_date, least(r.rounds_chanted, 300), 0, false, 'auto', commit_, public.app_now())
+    on conflict (competition_id, user_id, log_date) do nothing;
+    get diagnostics n = row_count;
+    if n > 0 then fulfilled := fulfilled || r.log_date; end if;
+  end loop;
+
+  if array_length(fulfilled, 1) > 0 then
+    select * into old from public.competition_totals where competition_id = c.id and user_id = uid;
+    new_ := public.recompute_user(c.id, uid);
+    perform public.emit_feed(c.id, uid, 'chanting',
+      jsonb_build_object('auto', true, 'dates', to_jsonb(fulfilled)), old, new_);
+  end if;
+
+  select coalesce(rounds_chanted, 0) into today_rounds from public.user_chanting_logs
+   where competition_id = c.id and user_id = uid and log_date = today;
+  return jsonb_build_object('success', true, 'active', true, 'todayRounds', coalesce(today_rounds, 0),
+                            'autoFulfilledDates', to_jsonb(fulfilled));
+end $$;
+
+-- ---------------------------------------------------------------------
+-- bonus: audiobook listening + server-graded quiz
+-- ---------------------------------------------------------------------
+create or replace function public.listen_required_seconds(p_audiobook uuid, p_threshold numeric) returns integer
+language sql stable security definer set search_path = public, pg_temp as $$
+  select case when dur is null or dur <= 0 then null else ceil(dur * p_threshold / 100.0)::int end
+  from (select coalesce(nullif(a.duration_seconds, 0),
+                        (select max(p.duration_reported) from public.user_audiobook_progress p where p.audiobook_id = a.id)) as dur
+        from public.audiobooks a where a.id = p_audiobook) x
+$$;
+
+create or replace function public.start_listening(p_audiobook uuid, p_duration integer) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare uid uuid := auth.uid(); c public.competitions; cfg jsonb; pr public.user_audiobook_progress; req int;
+begin
+  if uid is null then raise exception 'NOT_AUTHENTICATED'; end if;
+  c := public.active_competition();
+  if c.id is null then raise exception 'NO_ACTIVE_COMPETITION'; end if;
+  if not c.bonus_enabled then raise exception 'BONUS_NOT_ENABLED'; end if;
+  perform 1 from public.audiobooks where id = p_audiobook;
+  if not found then raise exception 'AUDIOBOOK_NOT_FOUND'; end if;
+  perform 1 from public.users where id = uid and is_onboarded;
+  if not found then raise exception 'NOT_ONBOARDED'; end if;
+  cfg := public.comp_cfg(c.config);
+  insert into public.user_audiobook_progress (user_id, audiobook_id, competition_id, is_completed, listened_seconds, duration_reported, last_seen_at)
+  values (uid, p_audiobook, c.id, false, 0, least(greatest(coalesce(p_duration, 0), 0), 14400), public.app_now())
+  on conflict (competition_id, user_id, audiobook_id) do update
+    set duration_reported = greatest(coalesce(public.user_audiobook_progress.duration_reported, 0),
+                                     least(greatest(coalesce(p_duration, 0), 0), 14400)),
+        last_seen_at = public.app_now();
+  select * into pr from public.user_audiobook_progress where competition_id = c.id and user_id = uid and audiobook_id = p_audiobook;
+  req := public.listen_required_seconds(p_audiobook, (cfg ->> 'listen_threshold_pct')::numeric);
+  return jsonb_build_object('listened_seconds', pr.listened_seconds, 'required_seconds', req, 'completed', pr.is_completed);
+end $$;
+
+create or replace function public.listening_heartbeat(p_audiobook uuid) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare uid uuid := auth.uid(); c public.competitions; cfg jsonb; pr public.user_audiobook_progress; req int; el numeric;
+        old public.competition_totals; cur public.competition_totals;
+begin
+  if uid is null then raise exception 'NOT_AUTHENTICATED'; end if;
+  c := public.active_competition();
+  if c.id is null or not c.bonus_enabled then raise exception 'BONUS_NOT_ENABLED'; end if;
+  cfg := public.comp_cfg(c.config);
+  select * into pr from public.user_audiobook_progress
+   where competition_id = c.id and user_id = uid and audiobook_id = p_audiobook for update;
+  if pr.id is null then raise exception 'LISTEN_NOT_STARTED'; end if;
+  req := public.listen_required_seconds(p_audiobook, (cfg ->> 'listen_threshold_pct')::numeric);
+  if pr.is_completed then
+    return jsonb_build_object('listened_seconds', pr.listened_seconds, 'required_seconds', req, 'completed', true);
+  end if;
+  el := extract(epoch from (public.app_now() - coalesce(pr.last_seen_at, public.app_now())));
+  if el >= 3 then
+    update public.user_audiobook_progress
+       set listened_seconds = listened_seconds + least(el, 15)::int, last_seen_at = public.app_now()
+     where id = pr.id returning * into pr;
+  end if;
+  if req is not null and pr.listened_seconds >= req then
+    update public.user_audiobook_progress set is_completed = true, completed_at = public.app_now() where id = pr.id
+      returning * into pr;
+    select * into cur from public.competition_totals where competition_id = c.id and user_id = uid;
+    perform public.emit_feed(c.id, uid, 'listen',
+      jsonb_build_object('title', (select title from public.audiobooks where id = p_audiobook)), cur, cur);
+  end if;
+  return jsonb_build_object('listened_seconds', pr.listened_seconds, 'required_seconds', req, 'completed', pr.is_completed);
+end $$;
+
+-- questions WITHOUT answers; only once listening is confirmed server-side
+create or replace function public.get_quiz(p_audiobook uuid) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare uid uuid := auth.uid(); c public.competitions; pr public.user_audiobook_progress; sub public.quiz_submissions;
+begin
+  if uid is null then raise exception 'NOT_AUTHENTICATED'; end if;
+  c := public.active_competition();
+  if c.id is null or not c.bonus_enabled then raise exception 'BONUS_NOT_ENABLED'; end if;
+  select * into sub from public.quiz_submissions where competition_id = c.id and user_id = uid and audiobook_id = p_audiobook;
+  if sub.id is not null then
+    return jsonb_build_object('already_submitted', true, 'score', sub.score, 'max_score', sub.max_score,
+                              'points_earned', sub.points_earned, 'answers', coalesce(sub.answers, '{}'::jsonb));
+  end if;
+  select * into pr from public.user_audiobook_progress where competition_id = c.id and user_id = uid and audiobook_id = p_audiobook;
+  if pr.id is null or not pr.is_completed then raise exception 'QUIZ_LOCKED'; end if;
+  return jsonb_build_object('already_submitted', false, 'questions',
+    coalesce((select jsonb_agg(jsonb_build_object('id', q.id, 'question_text', q.question_text, 'options', q.options)
+                               order by q.id)
+              from public.quiz_questions q where q.audiobook_id = p_audiobook), '[]'::jsonb));
+end $$;
+
+create or replace function public.submit_quiz(p_audiobook uuid, p_answers jsonb) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare uid uuid := auth.uid(); c public.competitions; cfg jsonb; pr public.user_audiobook_progress;
+        q record; score int := 0; total int := 0; res jsonb := '{}'::jsonb; ok boolean; pts numeric; cap numeric; used numeric;
+        sid uuid; old public.competition_totals; new_ public.competition_totals;
+begin
+  if uid is null then raise exception 'NOT_AUTHENTICATED'; end if;
+  c := public.active_competition();
+  if c.id is null or not c.bonus_enabled then raise exception 'BONUS_NOT_ENABLED'; end if;
+  cfg := public.comp_cfg(c.config);
+  perform pg_advisory_xact_lock(hashtextextended('quiz' || c.id::text || uid::text || p_audiobook::text, 0));
+  select * into pr from public.user_audiobook_progress where competition_id = c.id and user_id = uid and audiobook_id = p_audiobook;
+  if pr.id is null or not pr.is_completed then raise exception 'QUIZ_LOCKED'; end if;
+  perform 1 from public.quiz_submissions where competition_id = c.id and user_id = uid and audiobook_id = p_audiobook;
+  if found then raise exception 'QUIZ_ALREADY_SUBMITTED'; end if;
+
+  for q in select qq.id, a.correct_answer from public.quiz_questions qq
+           join public.quiz_answers a on a.question_id = qq.id where qq.audiobook_id = p_audiobook order by qq.id
+  loop
+    total := total + 1;
+    ok := (p_answers ->> q.id::text) is not null and (p_answers ->> q.id::text) = q.correct_answer;
+    if ok then score := score + 1; end if;
+    res := res || jsonb_build_object(q.id::text,
+             jsonb_build_object('chosen', p_answers -> q.id::text, 'correct', ok));
+  end loop;
+  if total = 0 then raise exception 'QUIZ_EMPTY'; end if;
+
+  pts := score * (cfg ->> 'quiz_points_per_correct')::numeric;
+  cap := nullif(cfg ->> 'max_quiz_bonus', '')::numeric;
+  if cap is not null then
+    select coalesce(sum(points), 0) into used from public.points_ledger
+     where competition_id = c.id and user_id = uid and source = 'quiz_bonus';
+    pts := greatest(least(pts, cap - used), 0);
+  end if;
+
+  select * into old from public.competition_totals where competition_id = c.id and user_id = uid;
+  insert into public.quiz_submissions (user_id, audiobook_id, competition_id, score, max_score, points_earned, answers)
+  values (uid, p_audiobook, c.id, score, total, pts::int, res) returning id into sid;
+  if pts > 0 then
+    insert into public.points_ledger (competition_id, user_id, source, points, activity_date, reference_id, note)
+    values (c.id, uid, 'quiz_bonus', pts, public.ist_today(), sid,
+            (select title from public.audiobooks where id = p_audiobook));
+  end if;
+  new_ := public.recompute_user(c.id, uid);
+  perform public.emit_feed(c.id, uid, 'quiz_bonus',
+    jsonb_build_object('title', (select title from public.audiobooks where id = p_audiobook), 'score', score, 'max', total),
+    old, new_);
+  return jsonb_build_object('score', score, 'max_score', total, 'points_earned', pts, 'answers', res);
+end $$;
+
+-- HOD: audiobook + questions + answers in one atomic call
+create or replace function public.hod_save_audiobook(p jsonb) returns uuid
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare aid uuid; q jsonb; qid uuid;
+begin
+  perform public.assert_hod();
+  if nullif(trim(p ->> 'title'), '') is null or nullif(trim(p ->> 'audio_url'), '') is null then
+    raise exception 'INVALID: title and audio_url are required';
+  end if;
+  if (p ->> 'category') not in ('F2', 'F4', 'F8', 'F12', 'F16') then raise exception 'INVALID: category'; end if;
+  insert into public.audiobooks (category, title, audio_url, language, duration_seconds)
+  values (p ->> 'category', trim(p ->> 'title'), trim(p ->> 'audio_url'), coalesce(p ->> 'language', 'English'),
+          nullif(p ->> 'duration_seconds', '')::int)
+  returning id into aid;
+  for q in select * from jsonb_array_elements(coalesce(p -> 'questions', '[]'::jsonb)) loop
+    if jsonb_array_length(q -> 'options') <> 4 or not (q -> 'options') @> to_jsonb(q ->> 'correct_answer') then
+      raise exception 'INVALID: each question needs 4 options containing the correct answer';
+    end if;
+    insert into public.quiz_questions (audiobook_id, question_text, options)
+    values (aid, q ->> 'question_text', q -> 'options') returning id into qid;
+    insert into public.quiz_answers (question_id, correct_answer) values (qid, q ->> 'correct_answer');
+  end loop;
+  return aid;
+end $$;
+
+create or replace function public.hod_set_audiobook_duration(p_id uuid, p_seconds integer) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  perform public.assert_hod();
+  update public.audiobooks set duration_seconds = nullif(least(greatest(p_seconds, 0), 14400), 0) where id = p_id;
+end $$;
+
+-- HOD manual bonus: atomic, tied to the competition, ledger only
+create or replace function public.give_bonus(p_user uuid, p_points integer, p_title text) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare c public.competitions; bid uuid; old public.competition_totals; new_ public.competition_totals;
+begin
+  perform public.assert_hod();
+  if p_points is null or p_points = 0 or abs(p_points) > 10000 then raise exception 'INVALID_POINTS'; end if;
+  if nullif(trim(p_title), '') is null then raise exception 'INVALID_TITLE'; end if;
+  c := public.open_competition();
+  if c.id is null then raise exception 'NO_ACTIVE_COMPETITION'; end if;
+  if not c.bonus_enabled then raise exception 'BONUS_NOT_ENABLED'; end if;
+  perform 1 from public.users where id = p_user;
+  if not found then raise exception 'USER_NOT_FOUND'; end if;
+  select * into old from public.competition_totals where competition_id = c.id and user_id = p_user;
+  insert into public.bonus_points (user_id, admin_id, title, points, competition_id)
+  values (p_user, auth.uid(), trim(p_title), p_points, c.id) returning id into bid;
+  insert into public.points_ledger (competition_id, user_id, source, points, activity_date, reference_id, note, created_by)
+  values (c.id, p_user, case when p_points > 0 then 'manual_bonus' else 'adjustment' end, p_points,
+          public.ist_today(), bid, trim(p_title), auth.uid());
+  new_ := public.recompute_user(c.id, p_user);
+  perform public.emit_feed(c.id, p_user, 'manual_bonus', jsonb_build_object('title', trim(p_title), 'points', p_points), old, new_);
+  return jsonb_build_object('total', new_.total);
+end $$;
+
+create or replace function public.hod_set_commitment(p_comp uuid, p_user uuid, p_rounds integer) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  perform public.assert_hod();
+  if p_rounds < 1 or p_rounds > 108 then raise exception 'INVALID_COMMITMENT'; end if;
+  insert into public.competition_participants (competition_id, user_id, commitment_rounds)
+  values (p_comp, p_user, p_rounds)
+  on conflict (competition_id, user_id) do update set commitment_rounds = excluded.commitment_rounds;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- competition management (HOD)
+-- ---------------------------------------------------------------------
+create or replace function public.seed_default_awards(p_comp uuid) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare c public.competitions;
+begin
+  select * into c from public.competitions where id = p_comp;
+  insert into public.competition_awards (competition_id, award_key, name, description, icon_key, criterion, unlock_date, sort_order)
+  values
+    (p_comp, 'rising_sadhaka', 'Rising Sadhaka', 'Awarded to the student with the highest overall score on the leaderboard.', 'rising_sadhaka', 'highest_total', c.end_date + 1, 1),
+    (p_comp, 'unbroken_flame', 'Unbroken Flame', 'Granted to the student with the longest streak of consecutive active days.', 'unbroken_flame', 'longest_streak', c.end_date + 1, 2),
+    (p_comp, 'mahayogi_crown', 'Mahayogi Crown', 'Crowned to the student with the highest single-day score of the competition.', 'mahayogi_crown', 'highest_single_day', c.end_date + 1, 3)
+  on conflict (competition_id, award_key) do nothing;
+  if c.bonus_enabled then
+    insert into public.competition_awards (competition_id, award_key, name, description, icon_key, criterion, unlock_date, sort_order)
+    values
+      (p_comp, 'brahma_muhurta', 'Active Entity', 'Bestowed upon the student who earns the most bonus points.', 'brahma_muhurta', 'highest_bonus', c.end_date + 1, 4),
+      (p_comp, 'jijnasu_scholar', 'Jijnasu Scholar', 'Awarded for the highest points earned from the spiritual training quizzes.', 'jijnasu_scholar', 'most_quiz_bonus', c.end_date + 1, 5)
+    on conflict (competition_id, award_key) do nothing;
+  end if;
+end $$;
+
+create or replace function public.save_competition(p jsonb) returns uuid
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  cid uuid := nullif(p ->> 'id', '')::uuid; existing public.competitions; cfg jsonb;
+  v_status text := coalesce(p ->> 'status', 'draft'); sd date; ed date; conflict_title text;
+  v_type text := p ->> 'type'; k text; v numeric; needs_rebuild boolean := false;
+begin
+  perform public.assert_hod();
+  if nullif(trim(p ->> 'title'), '') is null then raise exception 'INVALID: title is required'; end if;
+  if v_type not in ('reading', 'chanting', 'both') then raise exception 'INVALID: type'; end if;
+  if v_status not in ('draft', 'published') then raise exception 'INVALID: status must be draft or published'; end if;
+  sd := (p ->> 'start_date')::date; ed := (p ->> 'end_date')::date;
+  if sd is null or ed is null then raise exception 'INVALID: start and end dates are required'; end if;
+  if ed < sd then raise exception 'INVALID: end date must be on or after start date'; end if;
+
+  cfg := coalesce(p -> 'config', '{}'::jsonb);
+  foreach k in array array['chanting_points_at_commitment', 'streak_multiplier_cap', 'shield_count',
+                           'reading_points_per_minute', 'reading_daily_cap_minutes', 'reading_min_session_seconds',
+                           'weight_reading', 'weight_chanting', 'quiz_points_per_correct', 'late_log_days'] loop
+    if cfg ? k then
+      v := (cfg ->> k)::numeric;
+      if v is null or v < 0 then raise exception 'INVALID: % must be 0 or more', k; end if;
+    end if;
+  end loop;
+  if cfg ? 'listen_threshold_pct' then
+    v := (cfg ->> 'listen_threshold_pct')::numeric;
+    if v < 1 or v > 100 then raise exception 'INVALID: listen_threshold_pct must be 1-100'; end if;
+  end if;
+  if cfg ? 'max_quiz_bonus' and cfg -> 'max_quiz_bonus' <> 'null'::jsonb and (cfg ->> 'max_quiz_bonus')::numeric < 0 then
+    raise exception 'INVALID: max_quiz_bonus must be 0 or more';
+  end if;
+  if (cfg ? 'streak_multiplier_cap') and (cfg ->> 'streak_multiplier_cap')::numeric < 1 then
+    raise exception 'INVALID: streak_multiplier_cap must be at least 1';
+  end if;
+
+  if cid is not null then
+    select * into existing from public.competitions where id = cid for update;
+    if existing.id is null then raise exception 'COMPETITION_NOT_FOUND'; end if;
+    if existing.stored_status = 'finalized' then raise exception 'COMPETITION_FINALIZED'; end if;
+    if existing.stored_status = 'published' and v_status = 'draft'
+       and exists (select 1 from public.activity_logs where competition_id = cid) then
+      raise exception 'INVALID: a competition with activity cannot go back to draft';
+    end if;
+  end if;
+
+  if v_status = 'published' then
+    select title into conflict_title from public.competitions o
+     where (cid is null or o.id <> cid) and o.stored_status in ('published', 'finalized')
+       and o.start_date <= ed and o.end_date >= sd limit 1;
+    if conflict_title is not null then
+      raise exception 'OVERLAPS_EXISTING_COMPETITION: dates overlap with "%"', conflict_title;
+    end if;
+  end if;
+
+  if cid is null then
+    insert into public.competitions (title, description, cover_photo_url, type, bonus_enabled, start_date, end_date,
+                                     stored_status, config, created_by)
+    values (trim(p ->> 'title'), nullif(trim(coalesce(p ->> 'description', '')), ''),
+            nullif(trim(coalesce(p ->> 'cover_photo_url', '')), ''), v_type,
+            coalesce((p ->> 'bonus_enabled')::boolean, false), sd, ed, v_status, cfg, auth.uid())
+    returning id into cid;
+    perform public.seed_default_awards(cid);
+  else
+    needs_rebuild := existing.stored_status = 'published'
+      and (existing.type <> v_type or existing.bonus_enabled <> coalesce((p ->> 'bonus_enabled')::boolean, false)
+           or existing.config <> cfg or existing.start_date <> sd or existing.end_date <> ed);
+    update public.competitions set
+      title = trim(p ->> 'title'),
+      description = nullif(trim(coalesce(p ->> 'description', '')), ''),
+      cover_photo_url = nullif(trim(coalesce(p ->> 'cover_photo_url', '')), ''),
+      type = v_type, bonus_enabled = coalesce((p ->> 'bonus_enabled')::boolean, false),
+      start_date = sd, end_date = ed,
+      stored_status = case when existing.stored_status = 'archived' then 'archived' else v_status end,
+      config = cfg, updated_at = now()
+    where id = cid;
+    if needs_rebuild and public.ist_today() >= least(existing.start_date, sd) then
+      perform public.rebuild_competition_totals(cid);
+    end if;
+  end if;
+  return cid;
+end $$;
+
+create or replace function public.set_competition_status(p_id uuid, p_status text) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare c public.competitions; clash text;
+begin
+  perform public.assert_hod();
+  if p_status not in ('draft', 'published', 'archived') then raise exception 'INVALID: status'; end if;
+  select * into c from public.competitions where id = p_id for update;
+  if c.id is null then raise exception 'COMPETITION_NOT_FOUND'; end if;
+  if c.stored_status = 'finalized' and p_status <> 'archived' then raise exception 'COMPETITION_FINALIZED'; end if;
+  if p_status = 'draft' and exists (select 1 from public.activity_logs where competition_id = p_id) then
+    raise exception 'INVALID: a competition with activity cannot go back to draft; archive it instead';
+  end if;
+  if p_status = 'published' then
+    select title into clash from public.competitions o
+     where o.id <> p_id and o.stored_status in ('published', 'finalized')
+       and o.start_date <= c.end_date and o.end_date >= c.start_date limit 1;
+    if clash is not null then raise exception 'OVERLAPS_EXISTING_COMPETITION: dates overlap with "%"', clash; end if;
+  end if;
+  update public.competitions set stored_status = case
+      when c.stored_status = 'finalized' then 'finalized' else p_status end,
+    updated_at = now() where id = p_id;
+end $$;
+
+create or replace function public.delete_competition_draft(p_id uuid) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare c public.competitions;
+begin
+  perform public.assert_hod();
+  select * into c from public.competitions where id = p_id;
+  if c.id is null then return; end if;
+  if c.stored_status <> 'draft' then raise exception 'INVALID: only drafts can be deleted; archive the competition instead'; end if;
+  if exists (select 1 from public.activity_logs where competition_id = p_id)
+     or exists (select 1 from public.points_ledger where competition_id = p_id) then
+    raise exception 'INVALID: this draft has activity and cannot be deleted';
+  end if;
+  delete from public.competitions where id = p_id;
+end $$;
+
+-- p: array of {id?, award_key, name, description, icon_key, image_url, criterion, top_n, gender_scope, unlock_date, sort_order}
+create or replace function public.save_competition_awards(p_comp uuid, p jsonb) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare a jsonb; aid uuid; keep uuid[] := '{}'; i int := 0; c public.competitions;
+begin
+  perform public.assert_hod();
+  select * into c from public.competitions where id = p_comp;
+  if c.id is null then raise exception 'COMPETITION_NOT_FOUND'; end if;
+  if c.stored_status = 'finalized' then raise exception 'COMPETITION_FINALIZED'; end if;
+  for a in select * from jsonb_array_elements(coalesce(p, '[]'::jsonb)) loop
+    i := i + 1;
+    if nullif(trim(a ->> 'name'), '') is null then raise exception 'INVALID: award name is required'; end if;
+    if (a ->> 'criterion') = 'top_n_total' and coalesce((a ->> 'top_n')::int, 0) < 1 then
+      raise exception 'INVALID: top_n_total needs n >= 1';
+    end if;
+    aid := nullif(a ->> 'id', '')::uuid;
+    if aid is not null and exists (select 1 from public.competition_awards where id = aid and competition_id = p_comp) then
+      update public.competition_awards set
+        award_key = coalesce(nullif(a ->> 'award_key', ''), award_key), name = trim(a ->> 'name'),
+        description = a ->> 'description', icon_key = a ->> 'icon_key', image_url = nullif(a ->> 'image_url', ''),
+        criterion = a ->> 'criterion', top_n = nullif(a ->> 'top_n', '')::int,
+        gender_scope = coalesce(a ->> 'gender_scope', 'all'),
+        unlock_date = coalesce(nullif(a ->> 'unlock_date', '')::date, c.end_date + 1), sort_order = i
+      where id = aid;
+    else
+      insert into public.competition_awards (competition_id, award_key, name, description, icon_key, image_url,
+                                             criterion, top_n, gender_scope, unlock_date, sort_order)
+      values (p_comp,
+              coalesce(nullif(a ->> 'award_key', ''), 'award_' || substr(gen_random_uuid()::text, 1, 8)),
+              trim(a ->> 'name'), a ->> 'description', a ->> 'icon_key', nullif(a ->> 'image_url', ''),
+              a ->> 'criterion', nullif(a ->> 'top_n', '')::int, coalesce(a ->> 'gender_scope', 'all'),
+              coalesce(nullif(a ->> 'unlock_date', '')::date, c.end_date + 1), i)
+      returning id into aid;
+    end if;
+    keep := keep || aid;
+  end loop;
+  if exists (select 1 from public.user_awards ua where ua.competition_id = p_comp and ua.competition_award_id <> all (keep)) then
+    raise exception 'INVALID: an award that has already been given cannot be removed';
+  end if;
+  delete from public.competition_awards where competition_id = p_comp and id <> all (keep);
+end $$;
+
+-- ---------------------------------------------------------------------
+-- awards: candidates, finalization, grant/revoke, popups
+-- ---------------------------------------------------------------------
+-- candidates for ONE award, ordered. Ties share `rank`; tie_order applies the tie-break
+-- (earliest to reach the score, then highest best streak).
+create or replace function public.award_candidates(p_award uuid)
+returns table (user_id uuid, score numeric, rank integer, tie_order integer, tied boolean)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare a public.competition_awards; c public.competitions; cfg jsonb; w_c numeric; w_r numeric;
+begin
+  select * into a from public.competition_awards where id = p_award;
+  if a.id is null then return; end if;
+  select * into c from public.competitions where id = a.competition_id;
+  cfg := public.comp_cfg(c.config);
+  w_c := case when c.type = 'both' then (cfg ->> 'weight_chanting')::numeric else 1 end;
+  w_r := case when c.type = 'both' then (cfg ->> 'weight_reading')::numeric else 1 end;
+  if a.criterion = 'manual' then return; end if;
+
+  return query
+  with base as (
+    select ct.user_id,
+      case a.criterion
+        when 'highest_total' then ct.total
+        when 'top_n_total' then ct.total
+        when 'highest_chanting' then ct.chanting_points
+        when 'highest_reading' then ct.reading_points
+        when 'longest_streak' then ct.best_streak::numeric
+        when 'highest_bonus' then ct.bonus_points
+        when 'most_quiz_bonus' then coalesce((select sum(l.points) from public.points_ledger l
+             where l.competition_id = ct.competition_id and l.user_id = ct.user_id and l.source = 'quiz_bonus'), 0)
+        when 'highest_single_day' then coalesce((select max(day_total) from (
+             select sum(case l.source when 'chanting' then l.points * w_c when 'reading' then l.points * w_r else 0 end) as day_total
+             from public.points_ledger l where l.competition_id = ct.competition_id and l.user_id = ct.user_id
+             group by l.activity_date) dd), 0)
+      end as score,
+      ct.reached_at, ct.best_streak
+    from public.competition_totals ct
+    join public.users u on u.id = ct.user_id
+    where ct.competition_id = a.competition_id
+      and (a.gender_scope = 'all' or u.gender = a.gender_scope)
+  ), pos as (select * from base where base.score > 0),
+  ordered as (
+    select p.user_id, p.score,
+           row_number() over (order by p.score desc, p.reached_at asc nulls last, p.best_streak desc, p.user_id) as ord,
+           dense_rank() over (order by p.score desc) as drank
+    from pos p
+  )
+  select o.user_id, o.score,
+         case when a.criterion = 'top_n_total' then o.ord::int else o.drank::int end as rank,
+         o.ord::int as tie_order,
+         (count(*) over (partition by o.score) > 1) as tied
+  from ordered o
+  where case when a.criterion = 'top_n_total' then o.ord <= coalesce(a.top_n, 1) else o.drank = 1 end
+  order by o.ord;
+end $$;
+
+create or replace function public.suggest_award_winners(p_comp uuid) returns jsonb
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare out jsonb := '[]'::jsonb; a record;
+begin
+  if public.current_admin_role() is null then raise exception 'FORBIDDEN'; end if;
+  for a in select * from public.competition_awards where competition_id = p_comp order by sort_order loop
+    out := out || jsonb_build_array(jsonb_build_object(
+      'competition_award_id', a.id, 'award_key', a.award_key, 'name', a.name, 'criterion', a.criterion,
+      'top_n', a.top_n, 'gender_scope', a.gender_scope, 'unlock_date', a.unlock_date,
+      'winners', coalesce((select jsonb_agg(jsonb_build_object(
+          'user_id', k.user_id, 'full_name', u.full_name, 'department', u.department, 'gender', u.gender,
+          'score', k.score, 'rank', k.rank, 'tie_order', k.tie_order, 'tied', k.tied) order by k.tie_order)
+        from public.award_candidates(a.id) k join public.users u on u.id = k.user_id), '[]'::jsonb)));
+  end loop;
+  return out;
+end $$;
+
+-- p_assignments: [{competition_award_id, user_id, rank?, custom_message?}]  (HOD reviewed)
+create or replace function public.finalize_competition(p_comp uuid, p_assignments jsonb) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare c public.competitions; x jsonb; a public.competition_awards; sc numeric; n_awards int := 0; n_rows int;
+        zero public.competition_totals;
+begin
+  perform public.assert_hod();
+  select * into c from public.competitions where id = p_comp for update;
+  if c.id is null then raise exception 'COMPETITION_NOT_FOUND'; end if;
+  if c.stored_status = 'finalized' then raise exception 'COMPETITION_FINALIZED'; end if;
+  if c.stored_status <> 'published' then raise exception 'INVALID: only a published competition can be finalized'; end if;
+  if public.ist_today() <= c.end_date then raise exception 'INVALID: the competition has not ended yet'; end if;
+
+  perform public.rebuild_competition_totals(p_comp);
+
+  delete from public.competition_final_standings where competition_id = p_comp;
+  insert into public.competition_final_standings
+    (competition_id, user_id, rank, total, chanting_points, reading_points, bonus_points, best_streak,
+     full_name, avatar_url, department, gender)
+  select ct.competition_id, ct.user_id,
+         row_number() over (order by ct.total desc, ct.reached_at asc nulls last, ct.best_streak desc)::int,
+         ct.total, ct.chanting_points, ct.reading_points, ct.bonus_points, ct.best_streak,
+         u.full_name, u.avatar_url, u.department, u.gender
+  from public.competition_totals ct join public.users u on u.id = ct.user_id
+  where ct.competition_id = p_comp;
+  get diagnostics n_rows = row_count;
+
+  for x in select * from jsonb_array_elements(coalesce(p_assignments, '[]'::jsonb)) loop
+    select * into a from public.competition_awards
+     where id = (x ->> 'competition_award_id')::uuid and competition_id = p_comp;
+    if a.id is null then raise exception 'INVALID: unknown award in assignments'; end if;
+    perform 1 from public.users where id = (x ->> 'user_id')::uuid;
+    if not found then raise exception 'INVALID: unknown student in assignments'; end if;
+    select k.score into sc from public.award_candidates(a.id) k where k.user_id = (x ->> 'user_id')::uuid;
+    if sc is null then
+      -- swapped-in student: score for the criterion from the frozen totals
+      select case a.criterion when 'highest_chanting' then ct.chanting_points when 'highest_reading' then ct.reading_points
+                              when 'longest_streak' then ct.best_streak::numeric when 'highest_bonus' then ct.bonus_points
+                              else ct.total end into sc
+        from public.competition_totals ct where ct.competition_id = p_comp and ct.user_id = (x ->> 'user_id')::uuid;
+    end if;
+    insert into public.user_awards (competition_id, competition_award_id, user_id, rank, score_at_finalization,
+                                    unlock_date, custom_message, granted_by)
+    values (p_comp, a.id, (x ->> 'user_id')::uuid, nullif(x ->> 'rank', '')::int, sc, a.unlock_date,
+            nullif(trim(coalesce(x ->> 'custom_message', '')), ''), auth.uid())
+    on conflict (competition_award_id, user_id) do update
+      set rank = excluded.rank, score_at_finalization = excluded.score_at_finalization,
+          custom_message = excluded.custom_message, revoked_at = null, granted_by = excluded.granted_by;
+    insert into public.activity_feed (competition_id, user_id, kind, full_name, avatar_url, department, gender, detail, visible_from)
+    select p_comp, u.id, 'award', u.full_name, u.avatar_url, u.department, u.gender,
+           jsonb_build_object('award', a.name, 'award_key', a.award_key), a.unlock_date
+      from public.users u where u.id = (x ->> 'user_id')::uuid;
+    n_awards := n_awards + 1;
+  end loop;
+
+  update public.competitions set stored_status = 'finalized', finalized_at = now(), finalized_by = auth.uid(), updated_at = now()
+   where id = p_comp;
+  return jsonb_build_object('standings', n_rows, 'awards_given', n_awards);
+end $$;
+
+create or replace function public.grant_award(p_user uuid, p_award uuid, p_message text default null) returns uuid
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare a public.competition_awards; rid uuid;
+begin
+  perform public.assert_hod();
+  select * into a from public.competition_awards where id = p_award;
+  if a.id is null then raise exception 'INVALID: unknown award'; end if;
+  perform 1 from public.users where id = p_user;
+  if not found then raise exception 'USER_NOT_FOUND'; end if;
+  insert into public.user_awards (competition_id, competition_award_id, user_id, unlock_date, custom_message, granted_by)
+  values (a.competition_id, a.id, p_user, least(a.unlock_date, greatest(a.unlock_date, public.ist_today())),
+          nullif(trim(coalesce(p_message, '')), ''), auth.uid())
+  on conflict (competition_award_id, user_id) do update
+    set revoked_at = null, custom_message = excluded.custom_message, granted_by = excluded.granted_by, granted_at = now(),
+        seen_at = null
+  returning id into rid;
+  insert into public.activity_feed (competition_id, user_id, kind, full_name, avatar_url, department, gender, detail, visible_from)
+  select a.competition_id, u.id, 'award', u.full_name, u.avatar_url, u.department, u.gender,
+         jsonb_build_object('award', a.name, 'award_key', a.award_key), a.unlock_date
+    from public.users u where u.id = p_user;
+  return rid;
+end $$;
+
+create or replace function public.revoke_award(p_id uuid) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  perform public.assert_hod();
+  update public.user_awards set revoked_at = now() where id = p_id and revoked_at is null;
+end $$;
+
+create or replace function public.get_pending_award_popups() returns jsonb
+language sql stable security definer set search_path = public, pg_temp as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'id', ua.id, 'award_name', ca.name, 'description', ca.description, 'icon_key', ca.icon_key,
+      'image_url', ca.image_url, 'competition_title', c.title, 'custom_message', ua.custom_message,
+      'rank', ua.rank, 'unlock_date', ua.unlock_date) order by ua.unlock_date, ua.granted_at), '[]'::jsonb)
+  from public.user_awards ua
+  join public.competition_awards ca on ca.id = ua.competition_award_id
+  join public.competitions c on c.id = ua.competition_id
+  where ua.user_id = auth.uid() and ua.unlock_date <= public.ist_today()
+    and ua.revoked_at is null and ua.seen_at is null
+$$;
+
+create or replace function public.mark_award_seen(p_id uuid) returns void
+language sql security definer set search_path = public, pg_temp as $$
+  update public.user_awards set seen_at = coalesce(seen_at, now())
+   where id = p_id and user_id = auth.uid() and unlock_date <= public.ist_today() and revoked_at is null
+$$;
+
+create or replace function public.get_my_awards() returns jsonb
+language sql stable security definer set search_path = public, pg_temp as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'id', ua.id, 'award_name', ca.name, 'description', ca.description, 'icon_key', ca.icon_key,
+      'image_url', ca.image_url, 'competition_id', c.id, 'competition_title', c.title,
+      'unlock_date', ua.unlock_date, 'unlocked', ua.unlock_date <= public.ist_today(),
+      'custom_message', ua.custom_message, 'rank', ua.rank, 'score', ua.score_at_finalization)
+      order by ua.unlock_date desc), '[]'::jsonb)
+  from public.user_awards ua
+  join public.competition_awards ca on ca.id = ua.competition_award_id
+  join public.competitions c on c.id = ua.competition_id
+  where ua.user_id = auth.uid() and ua.revoked_at is null
+$$;
+
+create or replace function public.get_awards_view(p_comp uuid) returns jsonb
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare c public.competitions; out jsonb := '[]'::jsonb; a record; w jsonb; fin boolean; me uuid := auth.uid();
+        admin_ boolean := public.current_admin_role() is not null; mine jsonb;
+begin
+  select * into c from public.competitions where id = p_comp;
+  if c.id is null or (c.stored_status in ('draft') and not admin_) then return '[]'::jsonb; end if;
+  fin := c.stored_status = 'finalized';
+  for a in select * from public.competition_awards where competition_id = p_comp order by sort_order loop
+    if fin then
+      select coalesce(jsonb_agg(jsonb_build_object(
+          'user_id', ua.user_id, 'full_name', u.full_name, 'department', u.department, 'rank', ua.rank,
+          'score', ua.score_at_finalization, 'message', ua.custom_message,
+          'unlocked', ua.unlock_date <= public.ist_today()) order by ua.rank nulls last, u.full_name), '[]'::jsonb)
+        into w
+        from public.user_awards ua join public.users u on u.id = ua.user_id
+       where ua.competition_award_id = a.id and ua.revoked_at is null
+         and (ua.unlock_date <= public.ist_today() or ua.user_id = me or admin_);
+    else
+      select coalesce(jsonb_agg(jsonb_build_object(
+          'user_id', k.user_id, 'full_name', u.full_name, 'department', u.department, 'rank', k.rank,
+          'score', k.score, 'tied', k.tied) order by k.tie_order), '[]'::jsonb)
+        into w from public.award_candidates(a.id) k join public.users u on u.id = k.user_id;
+    end if;
+    select jsonb_build_object('won', true, 'unlocked', ua.unlock_date <= public.ist_today(),
+                              'message', ua.custom_message, 'rank', ua.rank)
+      into mine from public.user_awards ua
+     where ua.competition_award_id = a.id and ua.user_id = me and ua.revoked_at is null;
+    out := out || jsonb_build_array(jsonb_build_object(
+      'id', a.id, 'award_key', a.award_key, 'name', a.name, 'description', a.description, 'icon_key', a.icon_key,
+      'image_url', a.image_url, 'criterion', a.criterion, 'top_n', a.top_n, 'gender_scope', a.gender_scope,
+      'unlock_date', a.unlock_date, 'final', fin, 'winners', w, 'mine', coalesce(mine, jsonb_build_object('won', false))));
+    mine := null;
+  end loop;
+  return out;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- read models for the student app (public columns only; gender scope for admins)
+-- ---------------------------------------------------------------------
+create or replace function public.competition_json(c public.competitions) returns jsonb
+language sql stable security definer set search_path = public, pg_temp as $$
+  select jsonb_build_object(
+    'id', c.id, 'title', c.title, 'description', c.description, 'cover_photo_url', c.cover_photo_url,
+    'type', c.type, 'bonus_enabled', c.bonus_enabled, 'start_date', c.start_date, 'end_date', c.end_date,
+    'status', public.competition_status(c), 'stored_status', c.stored_status,
+    'config', public.comp_cfg(c.config),
+    'total_days', (c.end_date - c.start_date + 1),
+    'day_number', case when public.ist_today() < c.start_date then 0
+                       when public.ist_today() > c.end_date then (c.end_date - c.start_date + 1)
+                       else (public.ist_today() - c.start_date + 1) end,
+    'days_left', greatest(c.end_date - public.ist_today(), 0),
+    'finalized_at', c.finalized_at, 'today', public.ist_today())
+$$;
+
+create or replace function public.get_active_competition() returns jsonb
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare c public.competitions; nxt public.competitions; last_ public.competitions;
+begin
+  c := public.open_competition();
+  select * into nxt from public.competitions where stored_status = 'published' and start_date > public.ist_today()
+   order by start_date limit 1;
+  select * into last_ from public.competitions where stored_status in ('published', 'finalized')
+     and end_date < public.ist_today() order by end_date desc limit 1;
+  return jsonb_build_object(
+    'competition', case when c.id is null then null else public.competition_json(c) end,
+    'next', case when nxt.id is null then null else jsonb_build_object('id', nxt.id, 'title', nxt.title, 'start_date', nxt.start_date) end,
+    'last', case when last_.id is null then null else jsonb_build_object('id', last_.id, 'title', last_.title,
+                  'end_date', last_.end_date, 'status', public.competition_status(last_)) end,
+    'features', jsonb_build_object(
+      'books', (public.active_competition()).id is not null and
+               ((public.active_competition()).type in ('reading', 'both') or (public.active_competition()).bonus_enabled),
+      'podcast', (public.active_competition()).id is not null and (public.active_competition()).bonus_enabled,
+      'chanting', c.id is not null and c.type in ('chanting', 'both'),
+      'reading', (public.active_competition()).id is not null and (public.active_competition()).type in ('reading', 'both')),
+    'today', public.ist_today());
+end $$;
+
+create or replace function public.list_competitions() returns jsonb
+language sql stable security definer set search_path = public, pg_temp as $$
+  select coalesce(jsonb_agg(public.competition_json(c) order by c.start_date desc), '[]'::jsonb)
+  from public.competitions c
+  where public.current_admin_role() is not null
+     or c.stored_status in ('published', 'finalized')
+$$;
+
+create or replace function public.get_leaderboard(p_comp uuid)
+returns table (rank bigint, user_id uuid, full_name text, avatar_url text, gender text, department text,
+               total numeric, chanting_points numeric, reading_points numeric, bonus_points numeric,
+               current_streak integer, best_streak integer, last_log_date date)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare c public.competitions; r text := public.current_admin_role();
+begin
+  select * into c from public.competitions where id = p_comp;
+  if c.id is null or (c.stored_status = 'draft' and r is null) then return; end if;
+  if c.stored_status = 'finalized' then
+    return query
+    select s.rank::bigint, s.user_id, s.full_name, s.avatar_url, s.gender, s.department, s.total,
+           s.chanting_points, s.reading_points, s.bonus_points, null::int, s.best_streak, null::date
+    from public.competition_final_standings s
+    where s.competition_id = p_comp and (r is null or r = 'HOD' or public.admin_can_see_user(s.user_id))
+    order by s.rank;
+    return;
+  end if;
+  return query
+  select row_number() over (order by coalesce(ct.total, 0) desc, ct.reached_at asc nulls last, u.full_name)::bigint,
+         u.id, u.full_name, u.avatar_url, u.gender, u.department,
+         coalesce(ct.total, 0), coalesce(ct.chanting_points, 0), coalesce(ct.reading_points, 0),
+         coalesce(ct.bonus_points, 0), coalesce(ct.current_streak, 0), coalesce(ct.best_streak, 0), ct.last_log_date
+  from public.users u
+  left join public.competition_totals ct on ct.competition_id = p_comp and ct.user_id = u.id
+  where u.is_onboarded
+    and (ct.user_id is not null or public.competition_status(c) in ('active', 'scheduled'))
+    and (r is null or r = 'HOD' or public.admin_can_see_user(u.id))
+  order by 1;
+end $$;
+
+create or replace function public.get_competition_stats(p_comp uuid) returns jsonb
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare r text := public.current_admin_role(); parts int; today_n int;
+begin
+  select count(*) into parts from public.users u
+   where u.is_onboarded and (r is null or r = 'HOD' or public.admin_can_see_user(u.id));
+  select count(distinct l.user_id) into today_n from public.points_ledger l
+   where l.competition_id = p_comp and l.activity_date = public.ist_today() and l.source in ('chanting', 'reading')
+     and (r is null or r = 'HOD' or public.admin_can_see_user(l.user_id));
+  return jsonb_build_object('participants', parts, 'active_today', today_n);
+end $$;
+
+create or replace function public.get_my_state() returns jsonb
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare uid uuid := auth.uid(); c public.competitions; cfg jsonb; today date := public.ist_today();
+        logged date[]; loggable jsonb; commit_ int; t public.competition_totals; counter int := 0; late int;
+begin
+  c := public.open_competition();
+  if c.id is null then return jsonb_build_object('competition_id', null); end if;
+  cfg := public.comp_cfg(c.config); late := (cfg ->> 'late_log_days')::int;
+  select commitment_rounds into commit_ from public.competition_participants where competition_id = c.id and user_id = uid;
+  select * into t from public.competition_totals where competition_id = c.id and user_id = uid;
+  select coalesce(array_agg(log_date), '{}') into logged from public.activity_logs where competition_id = c.id and user_id = uid;
+  select coalesce(jsonb_agg(d::date order by d desc), '[]'::jsonb) into loggable
+    from generate_series(greatest(c.start_date, today - late), least(c.end_date, today), interval '1 day') d
+   where d::date <> all (logged);
+  select coalesce(rounds_chanted, 0) into counter from public.user_chanting_logs
+   where competition_id = c.id and user_id = uid and log_date = today;
+  return jsonb_build_object(
+    'competition_id', c.id, 'commitment', commit_, 'logged_dates', to_jsonb(logged), 'loggable_dates', loggable,
+    'counter_today', coalesce(counter, 0),
+    'totals', case when t.user_id is null then null else to_jsonb(t) end,
+    'default_commitment', (select target_chanting from public.users where id = uid));
+end $$;
+
+create or replace function public.get_public_profile(p_user uuid, p_comp uuid) returns jsonb
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare u record; t public.competition_totals; days jsonb; aw jsonb; r text := public.current_admin_role();
+begin
+  if auth.uid() is null then raise exception 'NOT_AUTHENTICATED'; end if;
+  if r is not null and r <> 'HOD' and not public.admin_can_see_user(p_user) then raise exception 'FORBIDDEN'; end if;
+  select id, full_name, avatar_url, department, gender into u from public.users where id = p_user;
+  if u.id is null then return null; end if;
+  select * into t from public.competition_totals where competition_id = p_comp and user_id = p_user;
+  select coalesce(jsonb_agg(jsonb_build_object('date', x.activity_date, 'chanting', x.ch, 'reading', x.rd, 'bonus', x.bn)
+                            order by x.activity_date), '[]'::jsonb) into days
+    from (select l.activity_date,
+                 sum(l.points) filter (where l.source = 'chanting') as ch,
+                 sum(l.points) filter (where l.source = 'reading') as rd,
+                 sum(l.points) filter (where l.source in ('quiz_bonus', 'manual_bonus', 'adjustment')) as bn
+            from public.points_ledger l where l.competition_id = p_comp and l.user_id = p_user
+            group by l.activity_date) x;
+  select coalesce(jsonb_agg(jsonb_build_object('award_name', ca.name, 'icon_key', ca.icon_key, 'image_url', ca.image_url,
+                                               'competition_title', c.title, 'unlock_date', ua.unlock_date)
+                            order by ua.unlock_date desc), '[]'::jsonb) into aw
+    from public.user_awards ua join public.competition_awards ca on ca.id = ua.competition_award_id
+    join public.competitions c on c.id = ua.competition_id
+   where ua.user_id = p_user and ua.revoked_at is null and ua.unlock_date <= public.ist_today();
+  return jsonb_build_object(
+    'user', jsonb_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url,
+                               'department', u.department, 'gender', u.gender),
+    'totals', case when t.user_id is null then null else to_jsonb(t) end, 'days', days, 'awards', aw);
+end $$;
+
+-- feature gate used by RLS on content tables
+create or replace function public.feature_enabled(p_feature text) returns boolean
+language sql stable security definer set search_path = public, pg_temp as $$
+  select coalesce((
+    select case p_feature
+      when 'books' then c.type in ('reading', 'both') or c.bonus_enabled
+      when 'podcast' then c.bonus_enabled
+      else false end
+    from public.competitions c
+    where c.stored_status = 'published' and public.ist_today() between c.start_date and c.end_date
+    order by c.start_date desc limit 1), false)
+$$;
+
+-- department suggestions for the registration form (students can no longer read other students' rows)
+create or replace function public.list_departments() returns text[]
+language sql stable security definer set search_path = public, pg_temp as $$
+  select coalesce(array_agg(d order by d), '{}') from (
+    select distinct trim(department) d from public.users where nullif(trim(department), '') is not null) x
+$$;

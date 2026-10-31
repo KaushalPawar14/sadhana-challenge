@@ -1,68 +1,47 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
+import { useActiveCompetition } from '@/hooks/useActiveCompetition';
 import { LogOut, Trophy, User, Award, LayoutDashboard, Sparkles, Radio, BookOpen, Flame } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { toast } from 'react-hot-toast';
 
 export const Navbar = () => {
   const pathname = usePathname();
   const { isAdmin, signOut, user } = useAuthStore();
+  const { features, refresh } = useActiveCompetition();
 
-  const showUpcomingNotice = (itemName: string) => {
-    toast.custom((t) => (
-      <div
-        className={`${
-          t.visible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
-        } max-w-sm w-full bg-white shadow-2xl rounded-[2rem] pointer-events-auto flex p-6 border border-slate-100 relative overflow-hidden transition-all duration-300 ease-out text-left`}
-      >
-        {/* Glow decoration */}
-        <div className="absolute -top-10 -right-10 w-24 h-24 bg-indigo-500/10 rounded-full blur-xl" />
+  const hidden = pathname === '/' || pathname === '/onboarding' || pathname.startsWith('/admin') || pathname.startsWith('/auth');
 
-        <div className="flex-1 flex gap-4 items-start">
-          <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 flex-shrink-0 border border-indigo-100/30">
-            {itemName === 'Books' ? (
-              <BookOpen size={24} className="animate-pulse" />
-            ) : (
-              <Radio size={24} className="animate-pulse" />
-            )}
-          </div>
-          <div>
-            <p className="text-sm font-black text-slate-800 tracking-tight">{itemName}</p>
-            <p className="text-xs font-bold text-slate-500 mt-1 leading-relaxed">
-              {itemName === 'Books'
-                ? 'Coming soon along with quizzes'
-                : 'This segment is currently in production and will be updated soon. Stay tuned for expert audio podcasts and engaging spiritual quizzes!'}
-            </p>
-          </div>
-        </div>
-      </div>
-    ), { duration: 4000, position: 'bottom-right' });
-  };
+  // pick up a competition change (new competition started / ended) when navigating
+  useEffect(() => {
+    if (!hidden && user) refresh();
+  }, [pathname, hidden, user, refresh]);
 
-  const navItems: Array<{ name: string; href: string; icon: any; isUpcoming?: boolean }> = [
+  // Links follow the running competition: chanting for chanting/both, books for reading/both or bonus,
+  // podcast (audiobooks + quiz) only when bonus is on.
+  const navItems: Array<{ name: string; href: string; icon: any }> = [
     { name: 'Leaderboard', href: '/leaderboard', icon: Trophy },
-    { name: 'Chanting', href: '/chanting', icon: Flame },
-    { name: 'Profile', href: '/profile', icon: User },
-    { name: 'Awards', href: '/awards', icon: Award },
-    // { name: 'Podcast', href: '/podcast', icon: Radio },
-    // { name: 'Books', href: '/books', icon: BookOpen },
   ];
+  if (features?.chanting) navItems.push({ name: 'Chanting', href: '/chanting', icon: Flame });
+  if (features?.books) navItems.push({ name: 'Books', href: '/books', icon: BookOpen });
+  if (features?.podcast) navItems.push({ name: 'Podcast', href: '/podcast', icon: Radio });
+  navItems.push({ name: 'Profile', href: '/profile', icon: User });
+  navItems.push({ name: 'Awards', href: '/awards', icon: Award });
 
   if (isAdmin) {
     navItems.unshift({ name: 'Admin', href: '/admin', icon: LayoutDashboard });
   }
 
   // Don't show navbar on login, onboarding, or admin pages
-  if (pathname === '/' || pathname === '/onboarding' || pathname.startsWith('/admin')) return null;
+  if (hidden) return null;
 
   return (
     <>
       {/* Mobile Bottom Nav */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 px-6 py-2 md:hidden z-50 flex justify-around items-center">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 py-2 md:hidden z-50 flex justify-around items-center">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
@@ -70,12 +49,6 @@ export const Navbar = () => {
             <Link
               key={item.href}
               href={item.href}
-              onClick={(e) => {
-                if (item.isUpcoming) {
-                  e.preventDefault();
-                  showUpcomingNotice(item.name);
-                }
-              }}
               className={`flex flex-col items-center gap-1 transition-all ${
                 isActive ? 'text-indigo-600 scale-110' : 'text-slate-500'
               }`}
@@ -104,12 +77,6 @@ export const Navbar = () => {
               <Link
                 key={item.href}
                 href={item.href}
-                onClick={(e) => {
-                  if (item.isUpcoming) {
-                    e.preventDefault();
-                    showUpcomingNotice(item.name);
-                  }
-                }}
                 className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${
                   isActive
                     ? 'bg-indigo-50 text-indigo-600 font-bold shadow-sm'

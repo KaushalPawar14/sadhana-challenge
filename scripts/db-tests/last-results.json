@@ -1,0 +1,768 @@
+{
+  "at": "2026-10-31T02:52:10.728Z",
+  "backup": "2026-10-31T02-13-14-991Z",
+  "pass": 152,
+  "fail": 0,
+  "results": [
+    {
+      "scenario": "1. Reading competition, bonus OFF",
+      "check": "chanting log is blocked -> CHANTING_NOT_ENABLED",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition, bonus OFF",
+      "check": "commitment blocked -> CHANTING_NOT_ENABLED",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition, bonus OFF",
+      "check": "reading earns 1 point/min -> 12 min = 12 points (got 12.00, expected 12)",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition, bonus OFF",
+      "check": "total = reading points (got 12.00, expected 12)",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition, bonus OFF",
+      "check": "quiz/listening is blocked -> BONUS_NOT_ENABLED",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition, bonus OFF",
+      "check": "books are visible to students (got 1, expected 1)",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition, bonus OFF",
+      "check": "audiobooks/quiz hidden from students (RLS) (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition, bonus OFF",
+      "check": "20 instant heartbeats + end credit 0 seconds (server clock) (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition, bonus OFF",
+      "check": "feed event carries the points delta",
+      "pass": true
+    },
+    {
+      "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
+      "check": "reading is blocked -> READING_NOT_ENABLED",
+      "pass": true
+    },
+    {
+      "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
+      "check": "commitment required first -> COMMITMENT_REQUIRED",
+      "pass": true
+    },
+    {
+      "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
+      "check": "commitment can only be raised (server) -> COMMITMENT_CANNOT_DECREASE",
+      "pass": true
+    },
+    {
+      "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
+      "check": "day 1: 10 rounds / commit 10 -> 10 pts (got 10.00, expected 10)",
+      "pass": true
+    },
+    {
+      "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
+      "check": "day 2: streak x2 -> +20 (got 30.00, expected 30)",
+      "pass": true
+    },
+    {
+      "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
+      "check": "day 3: streak 3 but cap 2 -> +20 (got 50.00, expected 50)",
+      "pass": true
+    },
+    {
+      "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
+      "check": "streak = 3 (got 3, expected 3)",
+      "pass": true
+    },
+    {
+      "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
+      "check": "no double logging -> ALREADY_LOGGED",
+      "pass": true
+    },
+    {
+      "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
+      "check": "audiobooks visible when bonus on (got 1, expected 1)",
+      "pass": true
+    },
+    {
+      "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
+      "check": "quiz locked before listening -> QUIZ_LOCKED",
+      "pass": true
+    },
+    {
+      "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
+      "check": "60 s of 80 s required -> still locked -> QUIZ_LOCKED",
+      "pass": true
+    },
+    {
+      "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
+      "check": "quiz returned without answers",
+      "pass": true
+    },
+    {
+      "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
+      "check": "graded on the server: 1/2 (got 1, expected 1)",
+      "pass": true
+    },
+    {
+      "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
+      "check": "5 points per correct answer (got 5, expected 5)",
+      "pass": true
+    },
+    {
+      "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
+      "check": "quiz bonus in ledger/totals (got 5.00, expected 5)",
+      "pass": true
+    },
+    {
+      "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
+      "check": "one attempt per audiobook -> QUIZ_ALREADY_SUBMITTED",
+      "pass": true
+    },
+    {
+      "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
+      "check": "student cannot read quiz_answers (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
+      "check": "quiz_questions has no correct_answer column (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
+      "check": "chanting 16/16 -> 10 (got 10.00, expected 10)",
+      "pass": true
+    },
+    {
+      "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
+      "check": "reading 8 min capped to 5 min -> 5 (got 5.00, expected 5)",
+      "pass": true
+    },
+    {
+      "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
+      "check": "manual bonus 7 (got 7.00, expected 7)",
+      "pass": true
+    },
+    {
+      "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
+      "check": "total = 10*1 + 5*2 + 7 = 27 (got 27.00, expected 27)",
+      "pass": true
+    },
+    {
+      "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
+      "check": "rebuild_competition_totals reproduces the same total (got 27.00, expected 27)",
+      "pass": true
+    },
+    {
+      "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
+      "check": "totals fully rebuildable from logs/sessions/ledger (got 27.00, expected 27)",
+      "pass": true
+    },
+    {
+      "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
+      "check": "leaderboard exposes no phone numbers",
+      "pass": true
+    },
+    {
+      "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
+      "check": "S1 leads the leaderboard (got d553b1a3-99e5-42ac-81bb-bd48e150c363, expected d553b1a3-99e5-42ac-81bb-bd48e150c363)",
+      "pass": true
+    },
+    {
+      "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
+      "check": "student can read the public live feed",
+      "pass": true
+    },
+    {
+      "scenario": "4. Overlapping dates are rejected",
+      "check": "published overlap rejected -> OVERLAPS_EXISTING_COMPETITION: dates overlap with \"TEST Both\"",
+      "pass": true
+    },
+    {
+      "scenario": "4. Overlapping dates are rejected",
+      "check": "a draft may overlap",
+      "pass": true
+    },
+    {
+      "scenario": "4. Overlapping dates are rejected",
+      "check": "publishing an overlapping draft is rejected -> OVERLAPS_EXISTING_COMPETITION: dates overlap with \"TEST Both\"",
+      "pass": true
+    },
+    {
+      "scenario": "4. Overlapping dates are rejected",
+      "check": "end before start rejected -> INVALID: end date must be on or after start date",
+      "pass": true
+    },
+    {
+      "scenario": "4. Overlapping dates are rejected",
+      "check": "negative weight rejected -> INVALID: weight_reading must be 0 or more",
+      "pass": true
+    },
+    {
+      "scenario": "4. Overlapping dates are rejected",
+      "check": "a competition with activity cannot be reverted to draft -> INVALID: a competition with activity cannot go back to draft",
+      "pass": true
+    },
+    {
+      "scenario": "5. Logging before start / after end is rejected",
+      "check": "day before start: no active competition -> NO_ACTIVE_COMPETITION",
+      "pass": true
+    },
+    {
+      "scenario": "5. Logging before start / after end is rejected",
+      "check": "date before start rejected -> DATE_OUTSIDE_COMPETITION",
+      "pass": true
+    },
+    {
+      "scenario": "5. Logging before start / after end is rejected",
+      "check": "last day may be submitted within the 1-day grace",
+      "pass": true
+    },
+    {
+      "scenario": "5. Logging before start / after end is rejected",
+      "check": "date after end rejected -> DATE_OUTSIDE_COMPETITION",
+      "pass": true
+    },
+    {
+      "scenario": "5. Logging before start / after end is rejected",
+      "check": "after end + grace: rejected -> NO_ACTIVE_COMPETITION",
+      "pass": true
+    },
+    {
+      "scenario": "5. Logging before start / after end is rejected",
+      "check": "reading after end rejected -> NO_ACTIVE_COMPETITION",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "guide: cannot create competition -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "guide: cannot give bonus -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "guide: cannot finalize -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "guide: cannot grant award -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "guide: cannot revoke award -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "guide: direct INSERT on competitions denied -> permission denied for table competitions",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "guide: cannot edit students (RLS, 0 rows) (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "guide: app_settings update affects 0 rows (RLS) (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "guide: cannot delete books (RLS) (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "male enabler: cannot create competition -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "male enabler: cannot give bonus -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "male enabler: cannot finalize -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "male enabler: cannot grant award -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "male enabler: cannot revoke award -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "male enabler: direct INSERT on competitions denied -> permission denied for table competitions",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "male enabler: cannot edit students (RLS, 0 rows) (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "male enabler: app_settings update affects 0 rows (RLS) (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "male enabler: cannot delete books (RLS) (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "female enabler: cannot create competition -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "female enabler: cannot give bonus -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "female enabler: cannot finalize -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "female enabler: cannot grant award -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "female enabler: cannot revoke award -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "female enabler: direct INSERT on competitions denied -> permission denied for table competitions",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "female enabler: cannot edit students (RLS, 0 rows) (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "female enabler: app_settings update affects 0 rows (RLS) (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "female enabler: cannot delete books (RLS) (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "HOD can run HOD functions (got 1, expected 1)",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "HOD sees all students (got TEST_S1,TEST_S2,TEST_S3, expected TEST_S1,TEST_S2,TEST_S3)",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "Guide sees male students only (RLS) (got TEST_S1,TEST_S3, expected TEST_S1,TEST_S3)",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "Male enabler sees male students only (got TEST_S1,TEST_S3, expected TEST_S1,TEST_S3)",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "Female enabler sees female students only (got TEST_S2, expected TEST_S2)",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "female enabler cannot read male student logs (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "leaderboard is gender-scoped for female enabler (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "6. Guide / Enabler are view-only (UI is not the guard: DB + RPC)",
+      "check": "feed is gender-scoped for male enabler (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "7. Student cannot bypass the system via REST",
+      "check": "cannot write own total_points -> permission denied for table users",
+      "pass": true
+    },
+    {
+      "scenario": "7. Student cannot bypass the system via REST",
+      "check": "cannot write own commitment -> permission denied for table users",
+      "pass": true
+    },
+    {
+      "scenario": "7. Student cannot bypass the system via REST",
+      "check": "cannot write streak -> permission denied for table users",
+      "pass": true
+    },
+    {
+      "scenario": "7. Student cannot bypass the system via REST",
+      "check": "cannot flip is_onboarded -> permission denied for table users",
+      "pass": true
+    },
+    {
+      "scenario": "7. Student cannot bypass the system via REST",
+      "check": "can still edit safe profile fields",
+      "pass": true
+    },
+    {
+      "scenario": "7. Student cannot bypass the system via REST",
+      "check": "direct write denied: public.points_ledger (competition_id -> permission denied for table points_ledger",
+      "pass": true
+    },
+    {
+      "scenario": "7. Student cannot bypass the system via REST",
+      "check": "direct write denied: public.activity_logs (competition_id -> permission denied for table activity_logs",
+      "pass": true
+    },
+    {
+      "scenario": "7. Student cannot bypass the system via REST",
+      "check": "direct write denied: public.reading_sessions (competition -> permission denied for table reading_sessions",
+      "pass": true
+    },
+    {
+      "scenario": "7. Student cannot bypass the system via REST",
+      "check": "direct write denied: public.quiz_submissions (competition -> permission denied for table quiz_submissions",
+      "pass": true
+    },
+    {
+      "scenario": "7. Student cannot bypass the system via REST",
+      "check": "direct write denied: public.competition_totals (competiti -> permission denied for table competition_totals",
+      "pass": true
+    },
+    {
+      "scenario": "7. Student cannot bypass the system via REST",
+      "check": "direct write denied: public.user_awards (competition_id,c -> permission denied for table user_awards",
+      "pass": true
+    },
+    {
+      "scenario": "7. Student cannot bypass the system via REST",
+      "check": "direct write denied: public.user_audiobook_progress (comp -> permission denied for table user_audiobook_progress",
+      "pass": true
+    },
+    {
+      "scenario": "7. Student cannot bypass the system via REST",
+      "check": "student sees only their own users row (got 1, expected 1)",
+      "pass": true
+    },
+    {
+      "scenario": "7. Student cannot bypass the system via REST",
+      "check": "cannot read another student's phone number (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "7. Student cannot bypass the system via REST",
+      "check": "admin_emails not readable (got denied, expected denied)",
+      "pass": true
+    },
+    {
+      "scenario": "7. Student cannot bypass the system via REST",
+      "check": "is_admin() can no longer be used to enumerate admins (got false, expected false)",
+      "pass": true
+    },
+    {
+      "scenario": "7. Student cannot bypass the system via REST",
+      "check": "anon connection sane (got ok, expected ok)",
+      "pass": true
+    },
+    {
+      "scenario": "7. Student cannot bypass the system via REST",
+      "check": "anon cannot call RPCs -> permission denied for function get_leaderboard",
+      "pass": true
+    },
+    {
+      "scenario": "7. Student cannot bypass the system via REST",
+      "check": "internal functions are not callable -> permission denied for function recompute_user",
+      "pass": true
+    },
+    {
+      "scenario": "7. Student cannot bypass the system via REST",
+      "check": "student cannot give themselves bonus -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "7. Student cannot bypass the system via REST",
+      "check": "public profile contains no phone number",
+      "pass": true
+    },
+    {
+      "scenario": "8. Finalize: suggested winners, swap, freeze",
+      "check": "suggested Rising Sadhaka = S1 (highest total) (got d553b1a3-99e5-42ac-81bb-bd48e150c363, expected d553b1a3-99e5-42ac-81bb-bd48e150c363)",
+      "pass": true
+    },
+    {
+      "scenario": "8. Finalize: suggested winners, swap, freeze",
+      "check": "Unbroken Flame has a suggestion",
+      "pass": true
+    },
+    {
+      "scenario": "8. Finalize: suggested winners, swap, freeze",
+      "check": "guide cannot finalize -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "8. Finalize: suggested winners, swap, freeze",
+      "check": "sanity -> x",
+      "pass": true
+    },
+    {
+      "scenario": "8. Finalize: suggested winners, swap, freeze",
+      "check": "finalized with 3 awards (others left unassigned) (got 3, expected 3)",
+      "pass": true
+    },
+    {
+      "scenario": "8. Finalize: suggested winners, swap, freeze",
+      "check": "status = finalized (got finalized, expected finalized)",
+      "pass": true
+    },
+    {
+      "scenario": "8. Finalize: suggested winners, swap, freeze",
+      "check": "frozen standings: S1 first (got d553b1a3-99e5-42ac-81bb-bd48e150c363, expected d553b1a3-99e5-42ac-81bb-bd48e150c363)",
+      "pass": true
+    },
+    {
+      "scenario": "8. Finalize: suggested winners, swap, freeze",
+      "check": "rebuild blocked after finalization -> COMPETITION_FINALIZED",
+      "pass": true
+    },
+    {
+      "scenario": "8. Finalize: suggested winners, swap, freeze",
+      "check": "recompute blocked after finalization -> COMPETITION_FINALIZED",
+      "pass": true
+    },
+    {
+      "scenario": "8. Finalize: suggested winners, swap, freeze",
+      "check": "no bonus after finalization -> NO_ACTIVE_COMPETITION",
+      "pass": true
+    },
+    {
+      "scenario": "8. Finalize: suggested winners, swap, freeze",
+      "check": "finalized competition cannot be edited -> COMPETITION_FINALIZED",
+      "pass": true
+    },
+    {
+      "scenario": "8. Finalize: suggested winners, swap, freeze",
+      "check": "finalized leaderboard served from the frozen snapshot (got 27, expected 27)",
+      "pass": true
+    },
+    {
+      "scenario": "8. Finalize: suggested winners, swap, freeze",
+      "check": "cannot finalize twice -> COMPETITION_FINALIZED",
+      "pass": true
+    },
+    {
+      "scenario": "8. Finalize: suggested winners, swap, freeze",
+      "check": "finalize before end rejected -> INVALID: the competition has not ended yet",
+      "pass": true
+    },
+    {
+      "scenario": "9. Winner popup: before / on unlock date, once only, history",
+      "check": "S2 (swapped-in winner) gets popups once awards have unlocked",
+      "pass": true
+    },
+    {
+      "scenario": "9. Winner popup: before / on unlock date, once only, history",
+      "check": "popup carries the custom message (got HOD swapped this one, expected HOD swapped this one)",
+      "pass": true
+    },
+    {
+      "scenario": "9. Winner popup: before / on unlock date, once only, history",
+      "check": "S1: award unlocks 12 Dec -> NO popup before the unlock date (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "9. Winner popup: before / on unlock date, once only, history",
+      "check": "S1 still sees the pending award in Award History (got 1, expected 1)",
+      "pass": true
+    },
+    {
+      "scenario": "9. Winner popup: before / on unlock date, once only, history",
+      "check": "flagged as not unlocked yet (\"unlocks on <date>\") (got false, expected false)",
+      "pass": true
+    },
+    {
+      "scenario": "9. Winner popup: before / on unlock date, once only, history",
+      "check": "Awards page: \"You've won X - unlocks on <date>\"",
+      "pass": true
+    },
+    {
+      "scenario": "9. Winner popup: before / on unlock date, once only, history",
+      "check": "other students cannot see the winner before unlock",
+      "pass": true
+    },
+    {
+      "scenario": "9. Winner popup: before / on unlock date, once only, history",
+      "check": "S1: popup appears on the unlock date (got 1, expected 1)",
+      "pass": true
+    },
+    {
+      "scenario": "9. Winner popup: before / on unlock date, once only, history",
+      "check": "never shown again after dismissal (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "9. Winner popup: before / on unlock date, once only, history",
+      "check": "another student cannot mark someone else's award seen (still 1 seen only for S1) (got 1, expected 1)",
+      "pass": true
+    },
+    {
+      "scenario": "9. Winner popup: before / on unlock date, once only, history",
+      "check": "award stays in Award History permanently",
+      "pass": true
+    },
+    {
+      "scenario": "9. Winner popup: before / on unlock date, once only, history",
+      "check": "guide cannot revoke -> FORBIDDEN: HOD only",
+      "pass": true
+    },
+    {
+      "scenario": "9. Winner popup: before / on unlock date, once only, history",
+      "check": "revoked award disappears (soft revoke) (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "9. Winner popup: before / on unlock date, once only, history",
+      "check": "row kept with revoked_at (got 1, expected 1)",
+      "pass": true
+    },
+    {
+      "scenario": "9. Winner popup: before / on unlock date, once only, history",
+      "check": "HOD manual grant works",
+      "pass": true
+    },
+    {
+      "scenario": "10. IST day boundary (00:10 IST counts as the new day)",
+      "check": "23:50 IST is still 2 Feb (got 2027-02-02, expected 2027-02-02)",
+      "pass": true
+    },
+    {
+      "scenario": "10. IST day boundary (00:10 IST counts as the new day)",
+      "check": "00:10 IST is 3 Feb (got 2027-02-03, expected 2027-02-03)",
+      "pass": true
+    },
+    {
+      "scenario": "10. IST day boundary (00:10 IST counts as the new day)",
+      "check": "default log date = IST day, not UTC day (got 2027-02-03, expected 2027-02-03)",
+      "pass": true
+    },
+    {
+      "scenario": "10. IST day boundary (00:10 IST counts as the new day)",
+      "check": "yesterday (IST) is flagged late (got true, expected true)",
+      "pass": true
+    },
+    {
+      "scenario": "10. IST day boundary (00:10 IST counts as the new day)",
+      "check": "counter records today rounds (got 3, expected 3)",
+      "pass": true
+    },
+    {
+      "scenario": "10. IST day boundary (00:10 IST counts as the new day)",
+      "check": "partial TODAY is not auto-fulfilled (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "10. IST day boundary (00:10 IST counts as the new day)",
+      "check": "manual log for today still works after counter taps",
+      "pass": true
+    },
+    {
+      "scenario": "10. IST day boundary (00:10 IST counts as the new day)",
+      "check": "no duplicate day (got 1, expected 1)",
+      "pass": true
+    },
+    {
+      "scenario": "10. IST day boundary (00:10 IST counts as the new day)",
+      "check": "completed day auto-fulfilled exactly once (got [\"2027-02-04\"], expected [\"2027-02-04\"])",
+      "pass": true
+    },
+    {
+      "scenario": "10. IST day boundary (00:10 IST counts as the new day)",
+      "check": "second sync does not double count (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "10. IST day boundary (00:10 IST counts as the new day)",
+      "check": "one ledger row per day (got 2, expected 2)",
+      "pass": true
+    },
+    {
+      "scenario": "10. IST day boundary (00:10 IST counts as the new day)",
+      "check": "implausible counter rejected -> INVALID_ROUNDS",
+      "pass": true
+    },
+    {
+      "scenario": "11. Competition 1 migration (dry run on the restored LIVE backup)",
+      "check": "all 21 students: rebuilt total == old users.total_points (old sum 8371, new sum 8371) (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "11. Competition 1 migration (dry run on the restored LIVE backup)",
+      "check": "Competition 1 type = chanting (got chanting, expected chanting)",
+      "pass": true
+    },
+    {
+      "scenario": "11. Competition 1 migration (dry run on the restored LIVE backup)",
+      "check": "bonus_enabled = false (no quiz/bonus rows in its dates) (got false, expected false)",
+      "pass": true
+    },
+    {
+      "scenario": "11. Competition 1 migration (dry run on the restored LIVE backup)",
+      "check": "dates from app_settings (got 2026-08-19..2026-09-03, expected 2026-08-19..2026-09-03)",
+      "pass": true
+    },
+    {
+      "scenario": "11. Competition 1 migration (dry run on the restored LIVE backup)",
+      "check": "Competition 1 derived status = ended (not finalized) (got ended, expected ended)",
+      "pass": true
+    },
+    {
+      "scenario": "11. Competition 1 migration (dry run on the restored LIVE backup)",
+      "check": "every existing log/session attached to Competition 1 (got 0, expected 0)",
+      "pass": true
+    },
+    {
+      "scenario": "11. Competition 1 migration (dry run on the restored LIVE backup)",
+      "check": "old competition keys retired (got 0, expected 0)",
+      "pass": true
+    }
+  ]
+}

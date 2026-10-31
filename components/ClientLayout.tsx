@@ -3,10 +3,15 @@
 import React, { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { Navbar } from "@/components/Navbar";
+import { AwardPopup } from '@/components/student/AwardPopup';
+import { useAuthStore } from '@/store/authStore';
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { user } = useAuthStore();
   const isAdminPath = pathname?.startsWith('/admin');
+  // award popups: signed-in student pages only (not login, onboarding, auth or admin screens)
+  const showAwardPopup = !!user && pathname !== '/' && pathname !== '/onboarding' && !pathname?.startsWith('/auth') && !isAdminPath;
 
   useEffect(() => {
     const applyTheme = () => {
@@ -33,6 +38,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
           {children}
         </div>
       </main>
+      {showAwardPopup && <AwardPopup />}
     </>
   );
 }

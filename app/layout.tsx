@@ -9,7 +9,7 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Sadhana Challenge",
-  description: "26-Day Gamified Spiritual Challenge",
+  description: "Gamified spiritual competitions: reading, chanting and more",
 };
 
 export default function RootLayout({

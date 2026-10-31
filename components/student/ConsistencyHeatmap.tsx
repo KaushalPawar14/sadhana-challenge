@@ -3,45 +3,29 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
+import { dateRange, istToday } from '@/lib/ist';
 
 interface HeatmapProps {
-  logs: any[];
+  /** first / last day of the competition (IST, YYYY-MM-DD) */
   startDate: string;
-  targets: { chanting: number; reading: number; hearing: number };
+  endDate: string;
+  /** points scored per IST day (from the ledger) */
+  dayPoints: Record<string, number>;
 }
 
-export const ConsistencyHeatmap = ({ logs, startDate, targets }: HeatmapProps) => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+/** One box per competition day. Colour = that day's points relative to the student's best day. */
+export const ConsistencyHeatmap = ({ startDate, endDate, dayPoints }: HeatmapProps) => {
+  const today = istToday();
+  const best = Math.max(0, ...Object.values(dayPoints));
 
-  const days = Array.from({ length: 26 }, (_, i) => {
-    const [year, month, day] = startDate ? startDate.split('-').map(Number) : [2026, 1, 1];
-    const date = new Date(year, month - 1, day);
-    date.setDate(date.getDate() + i);
-
-    const yStr = date.getFullYear();
-    const mStr = String(date.getMonth() + 1).padStart(2, '0');
-    const dStr = String(date.getDate()).padStart(2, '0');
-    const dateStr = `${yStr}-${mStr}-${dStr}`;
-
-    const log = logs.find(l => l.log_date === dateStr);
-
-    let completion = 0;
-    if (log) {
-      const c = targets.chanting > 0 ? Math.min(1, log.chanting_rounds / targets.chanting) : 1;
-      const r = targets.reading > 0 ? Math.min(1, log.reading_minutes / targets.reading) : 1;
-      completion = ((c + r) / 2) * 100;
-    }
-
-    const dTime = new Date(date).setHours(0, 0, 0, 0);
-    const tTime = new Date(today).setHours(0, 0, 0, 0);
-
+  const days = dateRange(startDate, endDate).map((date) => {
+    const pts = dayPoints[date] || 0;
     return {
-      date: dateStr,
-      isToday: dTime === tTime,
-      isFuture: dTime > tTime,
-      completion,
-      log
+      date,
+      isToday: date === today,
+      isFuture: date > today,
+      completion: best > 0 ? Math.min(100, Math.round((pts / best) * 100)) : 0,
+      pts,
     };
   });
 
@@ -56,14 +40,15 @@ export const ConsistencyHeatmap = ({ logs, startDate, targets }: HeatmapProps) =
   return (
     <div className="grid grid-cols-7 gap-3">
       {days.map((day, i) => (
-        <div key={day.date} className="relative">
+        <div key={day.date} className="relative" title={`${day.date}: ${day.pts} pts`}>
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: i * 0.02 }}
+            transition={{ delay: Math.min(i, 40) * 0.02 }}
             className={`
               aspect-square rounded-xl flex items-center justify-center relative transition-all
               ${getColor(day.completion, day.isFuture)}
+              ${day.isToday ? 'ring-2 ring-indigo-400' : ''}
               ${day.completion === 100 ? 'shadow-lg shadow-amber-200' : ''}
             `}
           >
