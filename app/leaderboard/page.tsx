@@ -8,7 +8,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useActiveCompetition } from '@/hooks/useActiveCompetition';
 import { DailyLogModal } from '@/components/student/DailyLogModal';
 import { UserProfileModal } from '@/components/student/UserProfileModal';
-import { Flame, Trophy, Plus, CheckCircle2, ChevronRight, BookOpen } from 'lucide-react';
+import { Flame, Trophy, Plus, CheckCircle2, ChevronRight, Headphones } from 'lucide-react';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
 import { toast } from 'react-hot-toast';
 import { friendlyError } from '@/lib/errors';
@@ -188,8 +188,17 @@ export default function LeaderboardPage() {
 
   // ---------- derived ----------
   const currentUserRow = useMemo(() => rows.find((r) => r.user_id === user?.id) ?? null, [rows, user]);
-  const showBreakdown = selected?.type === 'both';
-  const showBonusChip = !!selected?.bonus_enabled && !showBreakdown;
+  // Score columns follow the competition: chanting and/or reading, plus bonus whenever bonus is enabled
+  // (or somebody already has bonus points). Shown for every type as soon as there is more than one part.
+  const breakdownParts = useMemo(() => {
+    if (!selected) return [] as { key: 'chanting_points' | 'reading_points' | 'bonus_points'; label: string; icon: string }[];
+    const parts: { key: 'chanting_points' | 'reading_points' | 'bonus_points'; label: string; icon: string }[] = [];
+    if (includesChanting(selected.type)) parts.push({ key: 'chanting_points', label: 'Chanting', icon: '📿' });
+    if (includesReading(selected.type)) parts.push({ key: 'reading_points', label: 'Reading', icon: '📖' });
+    if (selected.bonus_enabled || rows.some((r) => r.bonus_points !== 0)) parts.push({ key: 'bonus_points', label: 'Bonus', icon: '🌟' });
+    return parts;
+  }, [selected, rows]);
+  const showBreakdown = breakdownParts.length > 1;
   const showStreak = !!selected && includesChanting(selected.type);
 
   const isOpenSelected = !!selected && selected.id === openId;
@@ -357,6 +366,14 @@ export default function LeaderboardPage() {
                 </div>
               )
             )}
+            {isOpenSelected && !!selected?.bonus_enabled && (
+              <Link
+                href="/podcast"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white p-3.5 rounded-2xl flex items-center justify-center gap-2 flex-1 md:flex-initial min-w-[130px] shadow-md shadow-indigo-500/10 border border-indigo-400/20 transition-all font-bold text-xs md:text-sm whitespace-nowrap"
+              >
+                <Headphones size={16} /> Bonuses
+              </Link>
+            )}
           </div>
         </div>
       )}
@@ -504,12 +521,7 @@ export default function LeaderboardPage() {
                               {/* compact breakdown on phones */}
                               {showBreakdown && (
                                 <span className="md:hidden text-[9px] font-bold text-slate-400 leading-none">
-                                  📿 {pts(u.chanting_points)} · 📖 {pts(u.reading_points)} · 🌟 {pts(u.bonus_points)}
-                                </span>
-                              )}
-                              {showBonusChip && u.bonus_points !== 0 && (
-                                <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded-full leading-none">
-                                  🌟 {pts(u.bonus_points)}
+                                  {breakdownParts.map((p) => `${p.icon} ${pts(u[p.key])}`).join(' · ')}
                                 </span>
                               )}
                             </div>
@@ -517,10 +529,10 @@ export default function LeaderboardPage() {
 
                           {showBreakdown && (
                             <div className="hidden md:flex items-center gap-4 text-center">
-                              {[['Chanting', u.chanting_points], ['Reading', u.reading_points], ['Bonus', u.bonus_points]].map(([label, v]) => (
-                                <div key={label as string}>
-                                  <p className="text-xs font-black text-slate-600 leading-none">{pts(v as number)}</p>
-                                  <p className="text-[8px] font-bold text-slate-300 uppercase tracking-wider mt-0.5 leading-none">{label}</p>
+                              {breakdownParts.map((p) => (
+                                <div key={p.key}>
+                                  <p className="text-xs font-black text-slate-600 leading-none">{pts(u[p.key])}</p>
+                                  <p className="text-[8px] font-bold text-slate-300 uppercase tracking-wider mt-0.5 leading-none">{p.label}</p>
                                 </div>
                               ))}
                             </div>
