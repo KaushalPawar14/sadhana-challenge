@@ -66,6 +66,8 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(0);
+  const [readingCommitment, setReadingCommitment] = useState<number | null>(null);
+  const [editMinutes, setEditMinutes] = useState(0);
 
   const openId = active?.competition?.id ?? null;
   const selected = list.find((c) => c.id === selectedId) ?? null;
@@ -104,6 +106,9 @@ export default function ProfilePage() {
     const commit = (st.data as any)?.commitment ?? null;
     setCommitment(commit);
     setEditValue(commit ?? 0);
+    const rc = (st.data as any)?.reading_commitment ?? null;
+    setReadingCommitment(rc);
+    setEditMinutes(rc ?? 0);
     setIsLoading(false);
   }, [user]);
 
@@ -156,15 +161,23 @@ export default function ProfilePage() {
     return { points: next - lifetimePoints, tier: thresholds.indexOf(next) + 2 };
   }, [lifetimePoints]);
 
+  // commitments can only be raised: chanting 1-16 rounds, reading 1-60 minutes (the database enforces the same)
   const handleRaiseCommitment = async () => {
     if (!isEditing) { setIsEditing(true); return; }
-    if (editValue < (commitment || 0)) {
-      toast.error('Spiritual commitments can only be increased, not decreased! 🚀');
+    const wantR = selected && includesChanting(selected.type) && commitment != null;
+    const wantM = selected && includesReading(selected.type) && readingCommitment != null;
+    if (wantR && (editValue < (commitment || 0) || editValue > 16)) {
+      toast.error(editValue > 16 ? 'Chanting commitment can be at most 16 rounds.' : 'Commitments can only be increased, not decreased! 🚀');
       return;
     }
-    const { error } = await supabase.rpc('set_commitment', { p_rounds: editValue });
+    if (wantM && (editMinutes < (readingCommitment || 0) || editMinutes > 60)) {
+      toast.error(editMinutes > 60 ? 'Reading commitment can be at most 60 minutes.' : 'Commitments can only be increased, not decreased! 🚀');
+      return;
+    }
+    const { error } = await supabase.rpc('set_commitment', { p_rounds: wantR ? editValue : null, p_minutes: wantM ? editMinutes : null });
     if (error) { toast.error(friendlyError(error)); return; }
-    setCommitment(editValue);
+    if (wantR) setCommitment(editValue);
+    if (wantM) setReadingCommitment(editMinutes);
     setIsEditing(false);
     toast.success('Commitment updated!');
   };
@@ -301,11 +314,11 @@ export default function ProfilePage() {
 
           {/* Commitment & Breakdown */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {includesChanting(selected.type) && (
+            {(includesChanting(selected.type) || includesReading(selected.type)) && (
               <section className="lg:col-span-2 bg-white rounded-[2.5rem] p-8 border border-slate-100">
                 <div className="flex items-center justify-between mb-8">
                   <h3 className="text-xl font-black text-slate-800">My Commitment</h3>
-                  {isOpenSelected && commitment != null && (
+                  {isOpenSelected && (commitment != null || readingCommitment != null) && (
                     <button
                       onClick={handleRaiseCommitment}
                       className={`p-3 rounded-2xl transition-all cursor-pointer ${isEditing ? 'bg-green-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
@@ -315,35 +328,52 @@ export default function ProfilePage() {
                     </button>
                   )}
                 </div>
-                <div className="p-6 rounded-3xl border border-slate-50 bg-orange-50 text-orange-600">
-                  <div className="flex items-center gap-3 mb-4">
-                    <span className="text-2xl">📿</span>
-                    <p className="text-sm font-bold opacity-80">Daily chanting</p>
-                  </div>
-                  {isEditing ? (
-                    <input
-                      type="number"
-                      min={commitment || 1}
-                      max={108}
-                      value={editValue}
-                      onChange={(e) => setEditValue(Math.min(108, parseInt(e.target.value) || 0))}
-                      className="w-full bg-white/50 p-2 rounded-lg font-black text-2xl outline-none border-2 border-indigo-200"
-                    />
-                  ) : (
-                    <p className="text-3xl font-black">
-                      {commitment ?? '—'} <span className="text-xs opacity-60 uppercase">Rounds</span>
-                    </p>
+                <div className={`grid gap-4 ${includesChanting(selected.type) && includesReading(selected.type) ? 'sm:grid-cols-2' : 'grid-cols-1'}`}>
+                  {includesChanting(selected.type) && (
+                    <div className="p-6 rounded-3xl border border-slate-50 bg-orange-50 text-orange-600">
+                      <div className="flex items-center gap-3 mb-4">
+                        <span className="text-2xl">📿</span>
+                        <p className="text-sm font-bold opacity-80">Daily chanting</p>
+                      </div>
+                      {isEditing && commitment != null ? (
+                        <input type="number" min={commitment || 1} max={16} value={editValue}
+                          onChange={(e) => setEditValue(Math.min(16, parseInt(e.target.value) || 0))}
+                          className="w-full bg-white/50 p-2 rounded-lg font-black text-2xl outline-none border-2 border-indigo-200" />
+                      ) : (
+                        <p className="text-3xl font-black">{commitment ?? '—'} <span className="text-xs opacity-60 uppercase">Rounds</span></p>
+                      )}
+                      <p className="text-[11px] font-bold opacity-70 mt-3">
+                        {commitment == null
+                          ? isOpenSelected ? 'You must set this (1 to 16 rounds) before your first log.' : 'Commitment is set per competition.'
+                          : 'Maximum 16 rounds. It can only be raised, never lowered.'}
+                      </p>
+                    </div>
                   )}
-                  <p className="text-[11px] font-bold opacity-70 mt-3">
-                    {commitment == null
-                      ? isOpenSelected ? 'You set this when you submit your first log.' : 'Commitment is set per competition.'
-                      : 'Your commitment can only be raised, never lowered.'}
-                  </p>
+                  {includesReading(selected.type) && (
+                    <div className="p-6 rounded-3xl border border-slate-50 bg-teal-50 text-teal-700">
+                      <div className="flex items-center gap-3 mb-4">
+                        <span className="text-2xl">📖</span>
+                        <p className="text-sm font-bold opacity-80">Daily reading</p>
+                      </div>
+                      {isEditing && readingCommitment != null ? (
+                        <input type="number" min={readingCommitment || 1} max={60} value={editMinutes}
+                          onChange={(e) => setEditMinutes(Math.min(60, parseInt(e.target.value) || 0))}
+                          className="w-full bg-white/50 p-2 rounded-lg font-black text-2xl outline-none border-2 border-teal-200" />
+                      ) : (
+                        <p className="text-3xl font-black">{readingCommitment ?? '—'} <span className="text-xs opacity-60 uppercase">Minutes</span></p>
+                      )}
+                      <p className="text-[11px] font-bold opacity-70 mt-3">
+                        {readingCommitment == null
+                          ? isOpenSelected ? 'You must set this (1 to 60 minutes) before you start reading.' : 'Commitment is set per competition.'
+                          : 'Maximum 60 minutes. It can only be raised, never lowered.'}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </section>
             )}
 
-            <section className={`bg-white rounded-[2.5rem] p-8 border border-slate-100 flex flex-col justify-center ${includesChanting(selected.type) ? '' : 'lg:col-span-3'}`}>
+            <section className={`bg-white rounded-[2.5rem] p-8 border border-slate-100 flex flex-col justify-center ${(includesChanting(selected.type) || includesReading(selected.type)) ? '' : 'lg:col-span-3'}`}>
               <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-6 text-center">Points Breakdown</h3>
               <div className="space-y-6">
                 {breakdown.map((item) => (

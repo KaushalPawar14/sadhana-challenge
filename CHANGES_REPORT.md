@@ -109,3 +109,21 @@ Competition 1 dry-run details: type chanting, `bonus_enabled=false` (no quiz/bon
 - 107 lint warnings remain (mostly `any` and effect-state patterns in pre-existing UI code).
 - Concurrency: per-user advisory locks serialise recomputation; PGlite is single-connection so true parallel races were reasoned about, not load-tested.
 - Backups contain phone numbers and emails — keep `backups/` out of git (it is ignored) and delete it when no longer needed.
+
+---
+
+## 9. Addendum — mandatory per-type commitments (migration `20261031000500_mandatory_commitments.sql`)
+
+Requested after the first deploy: the first activity of a competition must ask for the commitment(s) that its type needs, with hard limits.
+
+| Competition type | Asked at first activity | Limits |
+|---|---|---|
+| Chanting | daily **rounds** | 1 – **16** |
+| Reading | daily **minutes of book reading** | 1 – **60** |
+| Both (bonus on or off) | **both together**; neither alone is accepted | 16 rounds / 60 minutes |
+
+- **Database enforced** (`set_commitment(p_rounds, p_minutes)`, `hod_set_commitment`): limits, "required before any activity" (`log_chanting`, `start_reading_session`, and `sync_chanting` auto-fill clamps to 16), raise-only for both values. New column `competition_participants.reading_commitment_minutes`; the rounds range check is `NOT VALID` so the one migrated student with a legacy value of 55 keeps it as history.
+- **UI**: new `components/student/CommitmentForm.tsx` (used by the log modal and as a gate on the Books page); Profile shows/raises both; admin Users page shows the fields for the selected competition type (HOD edits, limits 16 / 60); rules text and error messages updated.
+- **Decision**: reading points are still per-minute with the daily cap (unchanged). The reading commitment is collected, stored, shown and capped, but does not (yet) change the reading score, unlike chanting where points = rounds ÷ commitment × 10. Say the word if reading should be normalised the same way (minutes ÷ commitment × N).
+- Tests: 172/172 (20 new checks: both-required, each limit, reading-only asks no rounds, chanting-only asks no minutes, raise-only, state reporting). `schema.sql` regenerated (includes 000500), fresh-deploy check passes, lint 0 errors, build passes.
+- **Must be applied before deploying this code**: the new UI calls `set_commitment(p_rounds, p_minutes)`, which only exists after migration 000500. Not applied to live yet, not committed or pushed.

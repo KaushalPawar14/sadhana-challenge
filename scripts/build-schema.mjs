@@ -6,13 +6,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
-const baseline = fs.readFileSync(path.join(root, 'scripts/db-tests/baseline.sql'), 'utf8');
+const read = (p) => fs.readFileSync(p, 'utf8').split('\r\n').join('\n'); // tolerate CRLF checkouts
+const baseline = read(path.join(root, 'scripts/db-tests/baseline.sql'));
 const tables = [...baseline.matchAll(/^create table public\.(\w+) \((?:.|\n)*?\);$/gm)]
   .filter((m) => m[1] !== 'test_clock')
   .map((m) => m[0]);
 
 const migDir = path.join(root, 'supabase/migrations');
-const structural = fs.readdirSync(migDir).filter((f) => /^20261031000[123]00_.*\.sql$/.test(f)).sort();
+const structural = fs.readdirSync(migDir).filter((f) => /^20261031000[1235]00_.*\.sql$/.test(f)).sort();
 
 const out = [
   '-- =====================================================================',
@@ -31,7 +32,7 @@ const out = [
   '',
 ];
 for (const f of structural) {
-  out.push(`-- ---------- supabase/migrations/${f} ----------`, fs.readFileSync(path.join(migDir, f), 'utf8'), '');
+  out.push(`-- ---------- supabase/migrations/${f} ----------`, read(path.join(migDir, f)), '');
 }
 fs.writeFileSync(path.join(root, 'schema.sql'), out.join('\n'));
 console.log('schema.sql written:', tables.length, 'base tables +', structural.length, 'migrations');

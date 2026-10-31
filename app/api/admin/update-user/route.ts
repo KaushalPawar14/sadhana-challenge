@@ -14,12 +14,19 @@ export async function POST(request: Request) {
   const { userId } = body;
 
   if (body.commitment) {
-    const { competitionId, rounds } = body.commitment;
-    const r = Number(rounds);
-    if (!competitionId || !Number.isInteger(r) || r < 1 || r > 108) {
-      return NextResponse.json({ error: 'Commitment must be a whole number between 1 and 108.' }, { status: 400 });
+    const { competitionId, rounds, minutes } = body.commitment;
+    const r = rounds == null ? null : Number(rounds);
+    const m = minutes == null ? null : Number(minutes);
+    if (!competitionId || (r === null && m === null)) {
+      return NextResponse.json({ error: 'Provide rounds and/or minutes.' }, { status: 400 });
     }
-    const { error } = await supabase.rpc('hod_set_commitment', { p_comp: competitionId, p_user: userId, p_rounds: r });
+    if (r !== null && (!Number.isInteger(r) || r < 1 || r > 16)) {
+      return NextResponse.json({ error: 'Chanting commitment must be a whole number between 1 and 16 rounds.' }, { status: 400 });
+    }
+    if (m !== null && (!Number.isInteger(m) || m < 1 || m > 60)) {
+      return NextResponse.json({ error: 'Reading commitment must be a whole number between 1 and 60 minutes.' }, { status: 400 });
+    }
+    const { error } = await supabase.rpc('hod_set_commitment', { p_comp: competitionId, p_user: userId, p_rounds: r, p_minutes: m });
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     return NextResponse.json({ success: true });
   }

@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { useAuthStore } from '@/store/authStore';
 import { friendlyError } from '@/lib/errors';
 import { formatLong } from '@/lib/ist';
-import type { Competition } from '@/lib/competition';
+import { includesChanting, includesReading, type Competition } from '@/lib/competition';
 import { CompetitionSelect, ViewOnlyNote, fetchAll, pickDefaultCompetition, useCompetitions } from '../_shared';
 
 // NOTE: there is intentionally no "delete student" action any more. Removing a student would cascade-delete
@@ -34,6 +34,7 @@ export default function AdminUsers() {
   const [emails, setEmails] = useState<Record<string, string>>({});
   const [totals, setTotals] = useState<Record<string, TotalsRow>>({});
   const [commitments, setCommitments] = useState<Record<string, number>>({});
+  const [readingCommitments, setReadingCommitments] = useState<Record<string, number>>({});
   const [openComp, setOpenComp] = useState<Competition | null>(null);
   const [compId, setCompId] = useState('');
   const [awardOptions, setAwardOptions] = useState<AwardOption[]>([]);
@@ -79,10 +80,11 @@ export default function AdminUsers() {
         fetchAll<TotalsRow>((from, to) => supabase.from('competition_totals')
           .select('user_id,total,chanting_points,reading_points,bonus_points,current_streak,best_streak').eq('competition_id', id).range(from, to)),
         fetchAll<any>((from, to) => supabase.from('competition_participants')
-          .select('user_id,commitment_rounds').eq('competition_id', id).range(from, to)),
+          .select('user_id,commitment_rounds,reading_commitment_minutes').eq('competition_id', id).range(from, to)),
       ]);
       setTotals(Object.fromEntries(t.map((r) => [r.user_id, r])));
       setCommitments(Object.fromEntries(p.filter((r) => r.commitment_rounds != null).map((r) => [r.user_id, r.commitment_rounds])));
+      setReadingCommitments(Object.fromEntries(p.filter((r) => r.reading_commitment_minutes != null).map((r) => [r.user_id, r.reading_commitment_minutes])));
     } catch (err) { toast.error(friendlyError(err)); }
   }, []);
   useEffect(() => { loadCompetitionData(compId); }, [compId, loadCompetitionData]);
@@ -146,12 +148,16 @@ export default function AdminUsers() {
     } catch (err) { toast.error(friendlyError(err)); }
   };
 
-  const changeCommitment = async (userId: string, rounds: number) => {
+  // HOD can correct a commitment: chanting 1-16 rounds, reading 1-60 minutes (the database enforces the same limits)
+  const changeCommitment = async (userId: string, kind: 'rounds' | 'minutes', value: number) => {
     if (!openComp) return;
+    const max = kind === 'rounds' ? 16 : 60;
+    if (value < 1 || value > max) { toast.error(kind === 'rounds' ? 'Chanting commitment must be 1 to 16 rounds.' : 'Reading commitment must be 1 to 60 minutes.'); return; }
     try {
-      await postUpdate({ userId, commitment: { competitionId: openComp.id, rounds } });
-      toast.success(`Commitment set to ${rounds} rounds`);
-      setCommitments((prev) => ({ ...prev, [userId]: rounds }));
+      await postUpdate({ userId, commitment: { competitionId: openComp.id, [kind]: value } });
+      toast.success(kind === 'rounds' ? `Chanting commitment set to ${value} rounds` : `Reading commitment set to ${value} minutes`);
+      if (kind === 'rounds') setCommitments((prev) => ({ ...prev, [userId]: value }));
+      else setReadingCommitments((prev) => ({ ...prev, [userId]: value }));
     } catch (err) { toast.error(friendlyError(err)); }
   };
 
@@ -186,10 +192,10 @@ export default function AdminUsers() {
 
   const exportToCSV = () => {
     const q = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const headers = ['Name', 'Email', 'Mobile', 'Gender', 'Age', 'Department', 'Commitment (rounds)', 'Total', 'Chanting', 'Reading', 'Bonus', 'Streak', 'Joined'];
+    const headers = ['Name', 'Email', 'Mobile', 'Gender', 'Age', 'Department', 'Commitment (rounds)', 'Commitment (reading min)', 'Total', 'Chanting', 'Reading', 'Bonus', 'Streak', 'Joined'];
     const rows = filtered.map((u) => {
       const t = totals[u.id];
-      return [q(u.full_name), q(emails[u.id]), q(u.mobile), q(u.gender), q(u.age), q(u.department), commitments[u.id] ?? '',
+      return [q(u.full_name), q(emails[u.id]), q(u.mobile), q(u.gender), q(u.age), q(u.department), commitments[u.id] ?? '', readingCommitments[u.id] ?? '',
         t?.total ?? 0, t?.chanting_points ?? 0, t?.reading_points ?? 0, t?.bonus_points ?? 0, t?.current_streak ?? 0, q(u.created_at)];
     });
     const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
@@ -215,19 +221,31 @@ export default function AdminUsers() {
       <span className={`px-2.5 py-1 rounded-lg text-xs font-black ${u.gender === 'M' ? 'bg-indigo-50 text-indigo-700' : u.gender === 'F' ? 'bg-pink-50 text-pink-700' : 'bg-amber-50 text-amber-700'}`}>{u.gender || '—'}</span>
     );
 
-  const CommitmentCell = ({ u }: { u: StudentRow }) =>
-    canEditCommitment ? (
-      <div className="flex items-center gap-1.5">
-        <input
-          key={`${u.id}-${commitments[u.id] ?? ''}`} type="number" min={1} max={108} defaultValue={commitments[u.id] ?? ''} placeholder="—"
-          onBlur={(e) => { const v = parseInt(e.target.value, 10); if (v > 0 && v !== commitments[u.id]) changeCommitment(u.id, v); }}
-          className="w-16 p-1.5 rounded-xl text-xs font-black bg-amber-50/70 border border-amber-200/80 text-amber-800 outline-none focus:border-amber-500 text-center"
-        />
-        <span className="text-[10px] font-black text-slate-400 uppercase">rds</span>
+  const CommitmentCell = ({ u }: { u: StudentRow }) => {
+    // show only what the selected competition type asks for
+    const comp = competitions.find((c) => c.id === compId) || openComp;
+    const showR = !comp || includesChanting(comp.type);
+    const showM = !!comp && includesReading(comp.type);
+    const field = (kind: 'rounds' | 'minutes', val: number | undefined, max: number, unit: string) =>
+      canEditCommitment ? (
+        <div className="flex items-center gap-1.5" key={kind}>
+          <input
+            key={`${u.id}-${kind}-${val ?? ''}`} type="number" min={1} max={max} defaultValue={val ?? ''} placeholder="—"
+            onBlur={(e) => { const v = parseInt(e.target.value, 10); if (v > 0 && v !== val) changeCommitment(u.id, kind, v); }}
+            className="w-16 p-1.5 rounded-xl text-xs font-black bg-amber-50/70 border border-amber-200/80 text-amber-800 outline-none focus:border-amber-500 text-center"
+          />
+          <span className="text-[10px] font-black text-slate-400 uppercase">{unit}</span>
+        </div>
+      ) : (
+        <span className="text-xs font-black text-slate-600" key={kind}>{val != null ? `${val} ${unit}` : '—'}</span>
+      );
+    return (
+      <div className="flex flex-col gap-1">
+        {showR && field('rounds', commitments[u.id], 16, 'rds')}
+        {showM && field('minutes', readingCommitments[u.id], 60, 'min')}
       </div>
-    ) : (
-      <span className="text-xs font-black text-slate-600">{commitments[u.id] != null ? `${commitments[u.id]} rds` : '—'}</span>
     );
+  };
 
   const Actions = ({ u }: { u: StudentRow }) =>
     isHod ? (

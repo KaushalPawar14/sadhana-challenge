@@ -194,7 +194,7 @@ export function buildRulesText(c: Pick<Competition, 'type' | 'bonus_enabled' | '
 
   if (includesChanting(c.type)) {
     const items = [
-      `Set your daily commitment (rounds) once at your first log. It can only be raised, never lowered.`,
+      `At your first log you must set your daily chanting commitment: 1 to 16 rounds. It can only be raised later, never lowered.`,
       `Base points = (rounds chanted ÷ your commitment) × ${fmt(cfg.chanting_points_at_commitment)}. Completing 100% of your commitment earns ${fmt(cfg.chanting_points_at_commitment)} points.`,
     ];
     items.push(
@@ -213,6 +213,7 @@ export function buildRulesText(c: Pick<Competition, 'type' | 'bonus_enabled' | '
     sections.push({
       heading: 'Reading',
       items: [
+        `At your first activity you must set your daily reading commitment: 1 to 60 minutes. It can only be raised later, never lowered.`,
         `Read inside the app’s Books section. Every full minute earns ${fmt(cfg.reading_points_per_minute)} point${cfg.reading_points_per_minute === 1 ? '' : 's'}.`,
         `At most ${fmt(cfg.reading_daily_cap_minutes)} minutes per day count.`,
         `Time is measured by the server while you are actively reading; sessions shorter than ${fmt(cfg.reading_min_session_seconds)} seconds are ignored.`,

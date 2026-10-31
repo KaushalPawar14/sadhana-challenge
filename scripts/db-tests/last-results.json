@@ -1,7 +1,7 @@
 {
-  "at": "2026-10-31T02:52:10.728Z",
+  "at": "2026-10-31T03:44:05.640Z",
   "backup": "2026-10-31T02-13-14-991Z",
-  "pass": 152,
+  "pass": 172,
   "fail": 0,
   "results": [
     {
@@ -12,6 +12,51 @@
     {
       "scenario": "1. Reading competition, bonus OFF",
       "check": "commitment blocked -> CHANTING_NOT_ENABLED",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition, bonus OFF",
+      "check": "reading-only: reading commitment is mandatory before the first session -> READING_COMMITMENT_REQUIRED",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition, bonus OFF",
+      "check": "reading-only: no chanting commitment is asked -> CHANTING_NOT_ENABLED",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition, bonus OFF",
+      "check": "reading commitment can never exceed 60 minutes -> INVALID_READING_COMMITMENT",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition, bonus OFF",
+      "check": "reading commitment must be at least 1 minute -> INVALID_READING_COMMITMENT",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition, bonus OFF",
+      "check": "cannot skip the commitment -> READING_COMMITMENT_REQUIRED",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition, bonus OFF",
+      "check": "reading commitment can only be raised -> READING_COMMITMENT_CANNOT_DECREASE",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition, bonus OFF",
+      "check": "reading commitment can be raised up to 60",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition, bonus OFF",
+      "check": "reading commitment stored (got 60, expected 60)",
+      "pass": true
+    },
+    {
+      "scenario": "1. Reading competition, bonus OFF",
+      "check": "reading-only: no chanting commitment stored",
       "pass": true
     },
     {
@@ -57,6 +102,21 @@
     {
       "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
       "check": "commitment required first -> COMMITMENT_REQUIRED",
+      "pass": true
+    },
+    {
+      "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
+      "check": "chanting commitment can never exceed 16 rounds -> INVALID_COMMITMENT",
+      "pass": true
+    },
+    {
+      "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
+      "check": "chanting commitment must be at least 1 -> INVALID_COMMITMENT",
+      "pass": true
+    },
+    {
+      "scenario": "2. Chanting competition, bonus ON (server-graded quiz)",
+      "check": "chanting-only: no reading commitment is asked -> READING_NOT_ENABLED",
       "pass": true
     },
     {
@@ -141,6 +201,46 @@
     },
     {
       "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
+      "check": "both: first log asks for the commitments -> COMMITMENT_REQUIRED",
+      "pass": true
+    },
+    {
+      "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
+      "check": "both: chanting commitment alone is not enough -> READING_COMMITMENT_REQUIRED",
+      "pass": true
+    },
+    {
+      "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
+      "check": "both: reading commitment alone is not enough -> COMMITMENT_REQUIRED",
+      "pass": true
+    },
+    {
+      "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
+      "check": "both: rounds above 16 rejected -> INVALID_COMMITMENT",
+      "pass": true
+    },
+    {
+      "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
+      "check": "both: minutes above 60 rejected -> INVALID_READING_COMMITMENT",
+      "pass": true
+    },
+    {
+      "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
+      "check": "both: reading is blocked until the commitments are given -> READING_COMMITMENT_REQUIRED",
+      "pass": true
+    },
+    {
+      "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
+      "check": "both: rounds and minutes stored together (16 / 30)",
+      "pass": true
+    },
+    {
+      "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
+      "check": "get_my_state reports both commitments",
+      "pass": true
+    },
+    {
+      "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
       "check": "chanting 16/16 -> 10 (got 10.00, expected 10)",
       "pass": true
     },
@@ -176,7 +276,7 @@
     },
     {
       "scenario": "3. Both competition, bonus ON, weights chanting 1 / reading 2",
-      "check": "S1 leads the leaderboard (got d553b1a3-99e5-42ac-81bb-bd48e150c363, expected d553b1a3-99e5-42ac-81bb-bd48e150c363)",
+      "check": "S1 leads the leaderboard (got b90f36d5-5bab-4229-be89-615ed2c02420, expected b90f36d5-5bab-4229-be89-615ed2c02420)",
       "pass": true
     },
     {
@@ -526,7 +626,7 @@
     },
     {
       "scenario": "8. Finalize: suggested winners, swap, freeze",
-      "check": "suggested Rising Sadhaka = S1 (highest total) (got d553b1a3-99e5-42ac-81bb-bd48e150c363, expected d553b1a3-99e5-42ac-81bb-bd48e150c363)",
+      "check": "suggested Rising Sadhaka = S1 (highest total) (got b90f36d5-5bab-4229-be89-615ed2c02420, expected b90f36d5-5bab-4229-be89-615ed2c02420)",
       "pass": true
     },
     {
@@ -556,7 +656,7 @@
     },
     {
       "scenario": "8. Finalize: suggested winners, swap, freeze",
-      "check": "frozen standings: S1 first (got d553b1a3-99e5-42ac-81bb-bd48e150c363, expected d553b1a3-99e5-42ac-81bb-bd48e150c363)",
+      "check": "frozen standings: S1 first (got b90f36d5-5bab-4229-be89-615ed2c02420, expected b90f36d5-5bab-4229-be89-615ed2c02420)",
       "pass": true
     },
     {

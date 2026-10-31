@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuthStore } from '@/store/authStore';
 import { useActiveCompetition } from '@/hooks/useActiveCompetition';
+import { CommitmentForm } from '@/components/student/CommitmentForm';
+import { supabase as browserSupabase } from '@/lib/supabaseClient';
 import { istDateOf, istToday } from '@/lib/ist';
 import { includesReading } from '@/lib/competition';
 import {
@@ -32,6 +34,20 @@ export default function BooksPage() {
   const { loading: compLoading, competition, features } = useActiveCompetition();
   // reading time is only measured (and scored) while the running competition includes reading
   const readingCounts = !!competition && includesReading(competition.type);
+
+  // Mandatory commitment (reading minutes, and for 'both' also chanting rounds) before the first reading activity
+  const [commitGate, setCommitGate] = useState<'checking' | 'needed' | 'ok'>('checking');
+  const [commitState, setCommitState] = useState<{ rounds: number | null; minutes: number | null; dflt: number | null }>({ rounds: null, minutes: null, dflt: null });
+  useEffect(() => {
+    if (compLoading) return;
+    if (!readingCounts || isAdmin) { setCommitGate('ok'); return; }
+    browserSupabase.rpc('get_my_state').then(({ data }) => {
+      const st = data as any;
+      const missing = (st?.required?.reading && !st?.reading_commitment) || (st?.required?.chanting && !st?.commitment);
+      setCommitState({ rounds: st?.commitment ?? null, minutes: st?.reading_commitment ?? null, dflt: st?.default_commitment ?? null });
+      setCommitGate(missing ? 'needed' : 'ok');
+    });
+  }, [compLoading, readingCounts, isAdmin]);
 
   // Books List State
   const [books, setBooks] = useState<Book[]>([]);
@@ -580,6 +596,22 @@ export default function BooksPage() {
         <div className="text-5xl mb-4">📚</div>
         <h2 className="text-2xl font-black text-slate-800 mb-2">Books are not part of the current competition</h2>
         <p className="text-sm font-bold text-slate-500">The library opens when a reading competition (or bonus) is running.</p>
+      </div>
+    );
+  }
+
+  if (readingCounts && !isAdmin && commitGate !== 'ok') {
+    if (commitGate === 'checking') return <div className="py-24 text-center font-bold text-slate-400">Checking your commitment...</div>;
+    return (
+      <div className="px-4 md:px-0 py-6 max-w-lg mx-auto">
+        <div className="rounded-[2rem] overflow-hidden border border-slate-100 shadow-xl">
+          <CommitmentForm
+            competition={competition!}
+            current={{ rounds: commitState.rounds, minutes: commitState.minutes }}
+            defaultRounds={commitState.dflt}
+            onSaved={() => setCommitGate('ok')}
+          />
+        </div>
       </div>
     );
   }

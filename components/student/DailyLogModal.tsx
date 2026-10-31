@@ -10,6 +10,7 @@ import { toast } from 'react-hot-toast';
 import { friendlyError } from '@/lib/errors';
 import { formatLong, formatShort, istToday } from '@/lib/ist';
 import { includesChanting, mergeConfig, type Competition, type ActiveCompetitionPayload } from '@/lib/competition';
+import { CommitmentForm } from '@/components/student/CommitmentForm';
 
 interface DailyLogModalProps {
   isOpen: boolean;
@@ -20,6 +21,8 @@ interface DailyLogModalProps {
 interface MyState {
   competition_id: string | null;
   commitment: number | null;
+  reading_commitment: number | null;
+  required: { chanting: boolean; reading: boolean };
   logged_dates: string[];
   loggable_dates: string[];
   counter_today: number;
@@ -54,9 +57,6 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
   const [competition, setCompetition] = useState<Competition | null>(null);
   const [state, setState] = useState<MyState | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isSavingCommitment, setIsSavingCommitment] = useState(false);
-  const [commitmentInput, setCommitmentInput] = useState<string>('16');
-  const [commitmentError, setCommitmentError] = useState<string>('');
   const [logDate, setLogDate] = useState('');
   const [rounds, setRounds] = useState<number>(0);
   const [result, setResult] = useState<LogResult | null>(null);
@@ -138,11 +138,12 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
       }
 
       setLogDate(first);
-      const dflt = st.commitment ?? st.default_commitment ?? 16;
-      setCommitmentInput(String(dflt));
       const counter = first === istToday() ? st.counter_today : await loadCounterRounds(comp.id, first, 0);
       setRounds(counter > 0 ? counter : st.commitment ?? 0);
-      setStep(st.commitment ? 'form' : 'commitment');
+      // every commitment this competition type needs must exist before the first log (chanting rounds, and for
+      // 'both' also the reading minutes); the database enforces the same rule
+      const missing = (st.required?.chanting && !st.commitment) || (st.required?.reading && !st.reading_commitment);
+      setStep(missing ? 'commitment' : 'form');
     } catch (e) {
       setBlockedMsg(<p className="text-sm font-bold text-red-600">{friendlyError(e)}</p>);
       setStep('blocked');
@@ -154,27 +155,10 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, user]);
 
-  const handleConfirmCommitment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const parsed = parseInt(commitmentInput.trim(), 10);
-    if (!commitmentInput.trim() || isNaN(parsed) || parsed < 1 || parsed > 108) {
-      setCommitmentError('Please enter a daily commitment between 1 and 108 rounds.');
-      return;
-    }
-    setCommitmentError('');
-    setIsSavingCommitment(true);
-    try {
-      const { error } = await supabase.rpc('set_commitment', { p_rounds: parsed });
-      if (error) throw error;
-      setState((s) => (s ? { ...s, commitment: parsed } : s));
-      if (rounds === 0) setRounds(parsed);
-      setStep('form');
-      toast.success(`Daily commitment of ${parsed} rounds saved!`);
-    } catch (err) {
-      toast.error(friendlyError(err));
-    } finally {
-      setIsSavingCommitment(false);
-    }
+  const handleCommitmentSaved = (saved: { rounds: number | null; minutes: number | null }) => {
+    setState((st) => (st ? { ...st, commitment: saved.rounds ?? st.commitment, reading_commitment: saved.minutes ?? st.reading_commitment } : st));
+    if (rounds === 0 && saved.rounds) setRounds(saved.rounds);
+    setStep('form');
   };
 
   const handleDateChange = async (date: string) => {
@@ -242,89 +226,13 @@ export const DailyLogModal = ({ isOpen, onClose, onSuccess }: DailyLogModalProps
             {blockedMsg}
             <button onClick={onClose} className="mt-6 w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-sm cursor-pointer">Close</button>
           </div>
-        ) : step === 'commitment' ? (
-          <div className="p-8 md:p-10 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 bg-amber-100 dark:bg-amber-950/80 rounded-2xl flex items-center justify-center text-amber-600 dark:text-amber-400 text-xl shadow-xs">
-                📿
-              </div>
-              <div>
-                <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100">Set Daily Commitment</h2>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/80 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-700/60">
-                    ⚡ Once per competition
-                  </span>
-                  <span className="text-slate-500 dark:text-slate-400 text-xs font-bold">• {competition?.title}</span>
-                </div>
-              </div>
-            </div>
-
-            <form onSubmit={handleConfirmCommitment} className="space-y-5">
-              <div className="bg-gradient-to-br from-amber-50 to-orange-50/70 dark:from-amber-950/50 dark:to-orange-950/30 p-4.5 rounded-2xl border border-amber-200/80 dark:border-amber-700/60 text-amber-900 dark:text-amber-100 space-y-2.5">
-                <div className="flex items-center justify-between font-black text-amber-800 dark:text-amber-300 text-xs uppercase tracking-wider">
-                  <span>📢 Leaderboard Scoring Rules</span>
-                  <span className="text-[10px] text-amber-700 dark:text-amber-300 font-bold bg-white/80 dark:bg-slate-900/80 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-700/60">
-                    Required
-                  </span>
-                </div>
-                <p className="text-xs font-semibold leading-relaxed text-slate-700 dark:text-slate-300">
-                  Your daily score is based on your commitment:
-                </p>
-                <div className="bg-slate-900 dark:bg-slate-950 p-3.5 rounded-xl border border-amber-500/40 text-center font-mono font-black text-amber-300 dark:text-amber-400 text-sm shadow-md tracking-tight">
-                  Base Points = (Rounds Chanted / Commitment) × {cfg.chanting_points_at_commitment}
-                </div>
-                <ul className="text-[11px] font-bold text-slate-600 dark:text-slate-300 space-y-1.5 pl-1">
-                  <li className="flex items-start gap-1.5">
-                    <span className="text-amber-500 font-black">✓</span>
-                    <span>Completing 100% of your commitment ({commitmentInput.trim() || '16'} rounds) = {cfg.chanting_points_at_commitment} base points.</span>
-                  </li>
-                  <li className="flex items-start gap-1.5">
-                    <span className="text-amber-600 dark:text-amber-400 font-black">🔒</span>
-                    <span><strong>Notice:</strong> your commitment can only be <u>raised</u> later (from your Profile), never lowered.</span>
-                  </li>
-                </ul>
-              </div>
-
-              <div>
-                <label className="block text-xs font-black text-slate-700 dark:text-slate-200 uppercase tracking-wider mb-2">
-                  Daily Chanting Rounds Commitment
-                </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  value={commitmentInput}
-                  onChange={(e) => {
-                    setCommitmentInput(e.target.value.replace(/[^0-9]/g, ''));
-                    if (commitmentError) setCommitmentError('');
-                  }}
-                  className={`w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border-2 outline-none font-black text-2xl text-slate-800 dark:text-slate-100 transition-all text-center ${
-                    commitmentError ? 'border-red-500 bg-red-50/20 dark:bg-red-950/30' : 'border-slate-200 dark:border-slate-700 focus:border-amber-500 dark:focus:border-amber-400 focus:bg-white dark:focus:bg-slate-800'
-                  }`}
-                  placeholder="e.g. 16"
-                />
-                {commitmentError ? (
-                  <p className="mt-2 text-xs font-bold text-red-600 dark:text-red-400 flex items-center justify-center gap-1.5 bg-red-50 dark:bg-red-950/50 p-2.5 rounded-xl border border-red-100 dark:border-red-900/50">
-                    <span>⚠️</span> {commitmentError}
-                  </p>
-                ) : (
-                  <p className="mt-1.5 text-[11px] text-center font-medium text-slate-500 dark:text-slate-400">
-                    Enter your daily target rounds (1 – 108).
-                  </p>
-                )}
-              </div>
-
-              <button
-                type="submit"
-                disabled={isSavingCommitment}
-                className="w-full bg-amber-500 hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500 text-white py-4.5 rounded-2xl font-black text-base transition-all shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                {isSavingCommitment ? 'Saving Commitment...' : (
-                  <>Save Commitment & Proceed <ChevronRight size={18} /></>
-                )}
-              </button>
-            </form>
-          </div>
+        ) : step === 'commitment' && competition ? (
+          <CommitmentForm
+            competition={competition}
+            current={{ rounds: state?.commitment ?? null, minutes: state?.reading_commitment ?? null }}
+            defaultRounds={state?.default_commitment}
+            onSaved={handleCommitmentSaved}
+          />
         ) : step === 'form' ? (
           <div className="p-8 md:p-10">
             <div className="flex items-center gap-3 mb-8">
